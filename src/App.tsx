@@ -10,6 +10,7 @@ import AdminPage from './pages/company/AdminPage';
 import QualityPublishedPage from './pages/company/QualityPublishedPage';
 import DocumentTypesPage from './pages/company/DocumentTypesPage';
 import QualityArchivedPage from './pages/company/QualityArchivedPage';
+import ProfilePage from './pages/company/ProfilePage';
 
 export default function App() {
   return (
@@ -35,11 +36,12 @@ export default function App() {
       >
         {/* index continua redirecionando pra library, como já estava */}
         <Route index element={<Navigate to="library" replace />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="publisher" element={<PublisherPage />} />
         <Route path="quality" element={<QualityPage />} />
         <Route path="quality-published" element={<QualityPublishedPage />} />
-         <Route path="quality-archived" element={<QualityArchivedPage />} />
+        <Route path="quality-archived" element={<QualityArchivedPage />} />
         <Route path="doc-types" element={<DocumentTypesPage />} />
         <Route path="admin" element={<AdminPage />} />
       </Route>

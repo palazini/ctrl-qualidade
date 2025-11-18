@@ -13,6 +13,7 @@ import {
   IconChevronDown,
   IconLogout,
   IconBuildingFactory2,
+  IconUserCircle,          // <- novo
 } from '@tabler/icons-react';
 
 type CompanyHeaderProps = {
@@ -22,6 +23,7 @@ type CompanyHeaderProps = {
   hasMultipleCompanies: boolean;
   onChangeCompany: () => void;
   onLogout: () => void;
+  onGoProfile: () => void;        // <- NOVO
 
   // opcional: logo da companhia (URL pública)
   companyLogoUrl?: string | null;
@@ -48,6 +50,7 @@ export function CompanyHeader({
   hasMultipleCompanies,
   onChangeCompany,
   onLogout,
+  onGoProfile,           // <- NOVO
   companyLogoUrl,
 }: CompanyHeaderProps) {
   const companyLogoNode = companyLogoUrl ? (
@@ -126,6 +129,14 @@ export function CompanyHeader({
 
           <Divider my="xs" />
 
+          {/* Meu perfil */}
+          <Menu.Item
+            leftSection={<IconUserCircle size={14} />}
+            onClick={onGoProfile}
+          >
+            Meu perfil
+          </Menu.Item>
+
           {hasMultipleCompanies && (
             <Menu.Item
               leftSection={<IconBuildingFactory2 size={14} />}
@@ -134,6 +145,8 @@ export function CompanyHeader({
               Trocar companhia
             </Menu.Item>
           )}
+
+          <Divider my="xs" />
 
           <Menu.Item
             leftSection={<IconLogout size={14} />}

@@ -1,3 +1,4 @@
+// src/pages/company/CompanyLayoutPage.tsx
 import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import {
   AppShell,
@@ -42,6 +43,7 @@ export type CompanyOutletContext = {
   company: Company;
   currentRole: UserCompanyRole;
   appUser: AppUser;
+  userEmail: string;
 };
 
 export default function CompanyLayoutPage() {
@@ -156,6 +158,7 @@ export default function CompanyLayoutPage() {
 
   const hasMultipleCompanies = memberships.length > 1;
 
+  // view ativa para pintar a sidebar (profile não entra aqui de propósito)
   const activeView: CompanyView = useMemo(() => {
     const segments = location.pathname.split('/').filter(Boolean);
     const last = segments[segments.length - 1] || '';
@@ -166,6 +169,7 @@ export default function CompanyLayoutPage() {
     if (last === 'quality-archived') return 'qualityArchived';
     if (last === 'doc-types') return 'docTypes';
     if (last === 'admin') return 'admin';
+    // se estiver em /profile, vai cair em 'library' (ok, não precisamos acender nada específico)
     return 'library';
   }, [location.pathname]);
 
@@ -173,7 +177,7 @@ export default function CompanyLayoutPage() {
     supabase.auth.signOut();
   }
 
-  // helper pra montar a URL do logo (public/company-logos/<slug>.svg)
+  // helper pra montar a URL do logo (public/company-logos/<slug>.png)
   function getCompanyLogoUrl() {
     if (!currentMembership) return undefined;
     return `/company-logos/${currentMembership.company.slug}.png`;
@@ -182,7 +186,7 @@ export default function CompanyLayoutPage() {
   function renderCentered(main: ReactNode) {
     return (
       <AppShell
-        header={{ height: 72 }} // <- aumentado de 60 para 72
+        header={{ height: 72 }}
         padding="md"
       >
         <AppShell.Header>
@@ -195,7 +199,8 @@ export default function CompanyLayoutPage() {
             hasMultipleCompanies={hasMultipleCompanies}
             onChangeCompany={() => navigate('/', { replace: true })}
             onLogout={handleLogout}
-            companyLogoUrl={getCompanyLogoUrl()} // <- novo
+            onGoProfile={() => navigate('profile')}
+            companyLogoUrl={getCompanyLogoUrl()}
           />
         </AppShell.Header>
         <AppShell.Main>
@@ -204,6 +209,10 @@ export default function CompanyLayoutPage() {
       </AppShell>
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Estados de erro / loading / sem acesso
+  // ---------------------------------------------------------------------------
 
   if (!userId) {
     return renderCentered(
@@ -280,6 +289,10 @@ export default function CompanyLayoutPage() {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Layout principal
+  // ---------------------------------------------------------------------------
+
   const currentRole = currentMembership.role;
   const canSeePublisher =
     currentRole === 'PUBLICADOR' || currentRole === 'GESTOR_QUALIDADE';
@@ -301,7 +314,7 @@ export default function CompanyLayoutPage() {
         navigate('quality-published');
         break;
       case 'qualityArchived':
-        navigate('quality-archived'); // novo
+        navigate('quality-archived');
         break;
       case 'docTypes':
         navigate('doc-types');
@@ -318,11 +331,12 @@ export default function CompanyLayoutPage() {
     company: currentMembership.company,
     currentRole,
     appUser,
+    userEmail,
   };
 
   return (
     <AppShell
-      header={{ height: 72 }} // <- também aqui
+      header={{ height: 72 }}
       navbar={{ width: 260, breakpoint: 'sm' }}
       padding="md"
     >
@@ -334,7 +348,8 @@ export default function CompanyLayoutPage() {
           hasMultipleCompanies={hasMultipleCompanies}
           onChangeCompany={() => navigate('/', { replace: true })}
           onLogout={handleLogout}
-          companyLogoUrl={getCompanyLogoUrl()} // <- aqui plugamos o logo
+          onGoProfile={() => navigate('profile')}
+          companyLogoUrl={getCompanyLogoUrl()}
         />
       </AppShell.Header>
 
