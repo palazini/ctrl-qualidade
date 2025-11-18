@@ -18,16 +18,9 @@ import {
   IconSearch,
   IconArrowLeft,
   IconFileDownload,
+  IconReload,
 } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
-
-type VersionStage =
-  | 'SUBMITTED'
-  | 'UNDER_REVIEW'
-  | 'NEEDS_CHANGES'
-  | 'EDITED_BY_QUALITY'
-  | 'READY_TO_PUBLISH'
-  | 'PUBLISHED';
 
 type RiskLevel = 'LOW' | 'HIGH';
 
@@ -80,7 +73,6 @@ export default function LibraryPage() {
   const [error, setError] = useState<string | null>(null);
   const [docs, setDocs] = useState<LibraryDoc[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<LibraryDoc | null>(null);
-
   const [search, setSearch] = useState('');
 
   async function loadDocuments() {
@@ -164,10 +156,8 @@ export default function LibraryPage() {
         )[0];
       }
 
-      const fileUrl =
-        cv?.pdf_file_url || cv?.source_file_url || null;
-      const fileName =
-        cv?.pdf_file_name || cv?.source_file_name || null;
+      const fileUrl = cv?.pdf_file_url || cv?.source_file_url || null;
+      const fileName = cv?.pdf_file_name || cv?.source_file_name || null;
 
       return {
         id: row.id as string,
@@ -200,7 +190,10 @@ export default function LibraryPage() {
     });
   }, [docs, search]);
 
-  const previewUrl = buildPreviewUrl(selectedDoc?.fileUrl ?? null);
+  const previewUrl = useMemo(
+    () => buildPreviewUrl(selectedDoc?.fileUrl ?? null),
+    [selectedDoc]
+  );
 
   // 1) Estado de loading / erro / sem documentos
   if (loading) {
@@ -251,9 +244,20 @@ export default function LibraryPage() {
                 Toque em um documento para abrir em tela cheia.
               </Text>
             </Stack>
-            <Badge variant="light" color="blue">
-              {docs.length} documento(s)
-            </Badge>
+            <Group gap="xs">
+              <Badge variant="light" color="blue">
+                {docs.length} documento(s)
+              </Badge>
+              <Button
+                size="xs"
+                variant="subtle"
+                radius="xl"
+                leftSection={<IconReload size={14} />}
+                onClick={loadDocuments}
+              >
+                Atualizar
+              </Button>
+            </Group>
           </Group>
 
           <Group align="flex-end" gap="sm">
@@ -389,6 +393,11 @@ export default function LibraryPage() {
                   </Text>
                 )}
               </Group>
+              {selectedDoc.fileName && (
+                <Text size="xs" c="dimmed">
+                  Arquivo: {selectedDoc.fileName}
+                </Text>
+              )}
             </Stack>
           </Group>
 
@@ -451,8 +460,8 @@ export default function LibraryPage() {
         </div>
 
         <Text size="xs" c="dimmed">
-          Use a rolagem e o zoom da própria área de visualização. Este modo é
-          pensado para uso em tablets, ocupando o máximo de espaço de tela com o
+          Use a rolagem e o zoom da própria área de visualização. Esta tela foi
+          pensada para uso em tablets, ocupando o máximo de espaço com o
           documento.
         </Text>
       </Stack>

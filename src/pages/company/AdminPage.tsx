@@ -58,6 +58,15 @@ type EditingUser = {
   system_role: SystemRole;
 };
 
+const EMAIL_DOMAIN = 'mc.controle.com';
+
+function normalizeEmail(raw: string) {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return '';
+  if (trimmed.includes('@')) return trimmed;
+  return `${trimmed}@${EMAIL_DOMAIN}`;
+}
+
 export default function AdminPage() {
   const { appUser } = useOutletContext<CompanyOutletContext>();
 
@@ -168,7 +177,7 @@ export default function AdminPage() {
           name,
           slug
         )
-      `
+      `,
       )
       .eq('user_id', userId);
 
@@ -242,7 +251,7 @@ export default function AdminPage() {
   async function handleSaveUser() {
     if (!editingUser) return;
 
-    const email = editingUser.email.trim().toLowerCase();
+    const email = normalizeEmail(editingUser.email);
     const name = editingUser.full_name.trim();
 
     if (!email || !name) {
@@ -258,19 +267,19 @@ export default function AdminPage() {
         // 1) Buscar id no auth.users pela função RPC
         const { data: authUserId, error: rpcError } = await supabase.rpc(
           'find_auth_user_id_by_email',
-          { p_email: email }
+          { p_email: email },
         );
 
         if (rpcError) {
           console.error(rpcError);
           throw new Error(
-            'Erro ao consultar usuário no Auth. Verifique a função find_auth_user_id_by_email.'
+            'Erro ao consultar usuário no Auth. Verifique a função find_auth_user_id_by_email.',
           );
         }
 
         if (!authUserId) {
           throw new Error(
-            'Nenhum usuário encontrado no Auth com esse e-mail. Cadastre primeiro o e-mail no Supabase Auth.'
+            'Nenhum usuário encontrado no Auth com esse e-mail. Cadastre primeiro o e-mail no Supabase Auth.',
           );
         }
 
@@ -291,15 +300,16 @@ export default function AdminPage() {
           throw new Error('Falha ao criar usuário de aplicação.');
         }
 
+        const newId = insertData.id as string;
+
         // Recarrega lista e seleciona o novo
         await loadUsers();
-        const newId = insertData.id as string;
-        const created = users.find((u) => u.id === newId);
-        // melhor recarregar memberships em branco
         setSelectedUserId(newId);
         setEditingUser({
           ...editingUser,
           id: newId,
+          email,
+          full_name: name,
         });
         setMemberships([]);
       } else {
@@ -344,6 +354,15 @@ export default function AdminPage() {
       return;
     }
 
+    // evita duplicar vínculo com a mesma companhia
+    const alreadyExists = memberships.some(
+      (m) => m.company_id === newCompanyId,
+    );
+    if (alreadyExists) {
+      alert('Este usuário já possui acesso a esta companhia.');
+      return;
+    }
+
     setSavingMembership(true);
 
     try {
@@ -355,12 +374,14 @@ export default function AdminPage() {
           .eq('user_id', editingUser.id);
       }
 
-      const { error: insertError } = await supabase.from('user_companies').insert({
-        user_id: editingUser.id,
-        company_id: newCompanyId,
-        role: newCompanyRole,
-        is_default: newCompanyDefault,
-      });
+      const { error: insertError } = await supabase
+        .from('user_companies')
+        .insert({
+          user_id: editingUser.id,
+          company_id: newCompanyId,
+          role: newCompanyRole,
+          is_default: newCompanyDefault,
+        });
 
       if (insertError) {
         console.error(insertError);
@@ -381,7 +402,7 @@ export default function AdminPage() {
 
   async function handleChangeMembershipRole(
     membershipId: string,
-    newRole: CompanyRole
+    newRole: CompanyRole,
   ) {
     if (!editingUser || !editingUser.id) return;
 
@@ -441,7 +462,7 @@ export default function AdminPage() {
     if (!editingUser || !editingUser.id) return;
 
     const confirmed = window.confirm(
-      'Remover esse acesso de companhia do usuário?'
+      'Remover esse acesso de companhia do usuário?',
     );
     if (!confirmed) return;
 
@@ -644,7 +665,7 @@ export default function AdminPage() {
                 <Group grow align="flex-end">
                   <TextInput
                     label="E-mail (Auth)"
-                    placeholder="usuario@empresa.com"
+                    placeholder={`usuario@${EMAIL_DOMAIN}`}
                     value={editingUser.email}
                     onChange={(e) =>
                       setEditingUser({
@@ -755,9 +776,10 @@ export default function AdminPage() {
                                   value &&
                                   handleChangeMembershipRole(
                                     m.id,
-                                    value as CompanyRole
+                                    value as CompanyRole,
                                   )
                                 }
+                                disabled={savingMembership}
                               />
                               <Button
                                 size="xs"
@@ -766,6 +788,7 @@ export default function AdminPage() {
                                 onClick={() =>
                                   handleSetDefaultMembership(m.id)
                                 }
+                                disabled={savingMembership}
                               >
                                 {m.is_default
                                   ? 'Padrão'
@@ -777,6 +800,7 @@ export default function AdminPage() {
                                 variant="subtle"
                                 onClick={() => handleRemoveMembership(m.id)}
                                 leftSection={<IconTrash size={14} />}
+                                disabled={savingMembership}
                               >
                                 Remover
                               </Button>
@@ -809,6 +833,7 @@ export default function AdminPage() {
                         value={newCompanyId}
                         onChange={setNewCompanyId}
                         size="xs"
+                        disabled={savingMembership}
                       />
                       <Select
                         label="Papel"
@@ -829,10 +854,11 @@ export default function AdminPage() {
                         value={newCompanyRole}
                         onChange={(value) =>
                           setNewCompanyRole(
-                            (value as CompanyRole) ?? 'COLABORADOR'
+                            (value as CompanyRole) ?? 'COLABORADOR',
                           )
                         }
                         size="xs"
+                        disabled={savingMembership}
                       />
                       <Select
                         label="Padrão?"
@@ -845,12 +871,14 @@ export default function AdminPage() {
                           setNewCompanyDefault(value === 'yes')
                         }
                         size="xs"
+                        disabled={savingMembership}
                       />
                       <Button
                         size="xs"
                         leftSection={<IconPlus size={14} />}
                         onClick={handleAddMembership}
                         loading={savingMembership}
+                        disabled={savingMembership}
                       >
                         Adicionar
                       </Button>

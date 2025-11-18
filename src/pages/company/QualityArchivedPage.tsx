@@ -681,7 +681,7 @@ export default function QualityArchivedPage() {
                   </Group>
                   <Text size="xs" c="dimmed">
                     Esta ação irá remover definitivamente o documento, todas as
-                    versões associadas e os arquivos do Storage. Não será
+                    versões associadas e os arquivos do banco de dados. Não será
                     possível recuperar depois.
                   </Text>
 
