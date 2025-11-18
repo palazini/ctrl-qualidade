@@ -22,49 +22,21 @@ import {
 } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
 
-type RiskLevel = 'LOW' | 'HIGH';
+// imports centralizados
+import type { RiskLevel } from '../../types/documents';
+import { formatDateTime, buildPreviewUrl } from '../../utils/documents';
+import { RiskBadge } from '../../components/documents/RiskBadge';
 
 type LibraryDoc = {
   id: string;
   title: string;
   code: string | null;
   docTypeLabel: string | null;
-  riskLevel: RiskLevel | null;
+  riskLevel: RiskLevel;
   publishedAt: string | null;
   fileUrl: string | null;
   fileName: string | null;
 };
-
-// formata datas para exibição
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  });
-}
-
-// gera URL para pré-visualização (PDF direto / Office viewer)
-function buildPreviewUrl(fileUrl: string | null) {
-  if (!fileUrl) return null;
-
-  const lower = fileUrl.toLowerCase();
-
-  if (lower.endsWith('.pdf')) {
-    return fileUrl;
-  }
-
-  const officeExts = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'];
-  if (officeExts.some((ext) => lower.endsWith(ext))) {
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
-      fileUrl
-    )}`;
-  }
-
-  return fileUrl;
-}
 
 export default function LibraryPage() {
   const { company } = useOutletContext<CompanyOutletContext>();
@@ -164,7 +136,7 @@ export default function LibraryPage() {
         title: row.title as string,
         code: (row.code as string) ?? null,
         docTypeLabel,
-        riskLevel: (row.risk_level as RiskLevel | null) ?? null,
+        riskLevel: (row.risk_level as RiskLevel) ?? null,
         publishedAt: (row.published_at as string) ?? null,
         fileUrl,
         fileName,
@@ -281,71 +253,49 @@ export default function LibraryPage() {
                   </Text>
                 </Center>
               ) : (
-                filteredDocs.map((doc) => {
-                  const riskLabel =
-                    doc.riskLevel === 'HIGH'
-                      ? 'Risco alto'
-                      : doc.riskLevel === 'LOW'
-                      ? 'Risco baixo'
-                      : 'Risco não informado';
-
-                  const riskColor =
-                    doc.riskLevel === 'HIGH'
-                      ? 'red'
-                      : doc.riskLevel === 'LOW'
-                      ? 'green'
-                      : 'gray';
-
-                  return (
-                    <Card
-                      key={doc.id}
-                      withBorder
-                      radius="md"
-                      shadow="xs"
-                      onClick={() => setSelectedDoc(doc)}
-                      style={{
-                        cursor: 'pointer',
-                        transition:
-                          'border-color 120ms ease, box-shadow 120ms ease',
-                      }}
-                    >
-                      <Stack gap={4}>
-                        <Group justify="space-between" align="flex-start">
-                          <Stack gap={0}>
-                            <Text fw={500} size="sm">
-                              {doc.title}
+                filteredDocs.map((doc) => (
+                  <Card
+                    key={doc.id}
+                    withBorder
+                    radius="md"
+                    shadow="xs"
+                    onClick={() => setSelectedDoc(doc)}
+                    style={{
+                      cursor: 'pointer',
+                      transition:
+                        'border-color 120ms ease, box-shadow 120ms ease',
+                    }}
+                  >
+                    <Stack gap={4}>
+                      <Group justify="space-between" align="flex-start">
+                        <Stack gap={0}>
+                          <Text fw={500} size="sm">
+                            {doc.title}
+                          </Text>
+                          {doc.code && (
+                            <Text size="xs" c="dimmed">
+                              Código: {doc.code}
                             </Text>
-                            {doc.code && (
-                              <Text size="xs" c="dimmed">
-                                Código: {doc.code}
-                              </Text>
-                            )}
-                            {doc.docTypeLabel && (
-                              <Text size="xs" c="dimmed">
-                                Tipo: {doc.docTypeLabel}
-                              </Text>
-                            )}
-                          </Stack>
-                          <Stack gap={4} align="flex-end">
-                            <Badge
-                              size="xs"
-                              color={riskColor}
-                              variant="light"
-                            >
-                              {riskLabel}
-                            </Badge>
-                            {doc.publishedAt && (
-                              <Text size="xs" c="dimmed">
-                                Publicado em:{' '}
-                                {formatDateTime(doc.publishedAt)}
-                              </Text>
-                            )}
-                          </Stack>
-                        </Group>
-                      </Stack>
-                    </Card>
-                  );
-                })
+                          )}
+                          {doc.docTypeLabel && (
+                            <Text size="xs" c="dimmed">
+                              Tipo: {doc.docTypeLabel}
+                            </Text>
+                          )}
+                        </Stack>
+                        <Stack gap={4} align="flex-end">
+                          <RiskBadge risk={doc.riskLevel} size="xs" />
+                          {doc.publishedAt && (
+                            <Text size="xs" c="dimmed">
+                              Publicado em:{' '}
+                              {formatDateTime(doc.publishedAt)}
+                            </Text>
+                          )}
+                        </Stack>
+                      </Group>
+                    </Stack>
+                  </Card>
+                ))
               )}
             </Stack>
           </ScrollArea>
@@ -402,17 +352,7 @@ export default function LibraryPage() {
           </Group>
 
           <Group gap="xs">
-            {selectedDoc.riskLevel && (
-              <Badge
-                size="xs"
-                color={selectedDoc.riskLevel === 'HIGH' ? 'red' : 'green'}
-                variant="light"
-              >
-                {selectedDoc.riskLevel === 'HIGH'
-                  ? 'Risco alto'
-                  : 'Risco baixo'}
-              </Badge>
-            )}
+            <RiskBadge risk={selectedDoc.riskLevel} size="xs" />
 
             {selectedDoc.fileUrl && (
               <Button

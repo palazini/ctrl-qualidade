@@ -16,10 +16,13 @@ import {
   TextInput,
   Select,
 } from '@mantine/core';
-import { IconSearch, IconRefresh } from '@tabler/icons-react';
+import { IconSearch, IconReload } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
 
-type RiskLevel = 'LOW' | 'HIGH';
+// tipos/helpers centralizados
+import type { RiskLevel } from '../../types/documents';
+import { formatDateTime, buildPreviewUrl } from '../../utils/documents';
+import { RiskBadge } from '../../components/documents/RiskBadge';
 
 type VersionRow = {
   id: string;
@@ -68,58 +71,6 @@ type PublishedDoc = {
 };
 
 type RiskFilter = 'ALL' | 'LOW' | 'HIGH';
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  });
-}
-
-function riskBadge(risk: RiskLevel | null) {
-  if (!risk) {
-    return (
-      <Badge size="xs" color="gray" variant="light">
-        Risco não informado
-      </Badge>
-    );
-  }
-  if (risk === 'HIGH') {
-    return (
-      <Badge size="xs" color="red" variant="light">
-        Risco alto
-      </Badge>
-    );
-  }
-  return (
-    <Badge size="xs" color="green" variant="light">
-      Risco baixo
-    </Badge>
-  );
-}
-
-// mesmo helper das outras telas
-function buildPreviewUrl(fileUrl: string | null) {
-  if (!fileUrl) return null;
-
-  const lower = fileUrl.toLowerCase();
-
-  if (lower.endsWith('.pdf')) {
-    return fileUrl;
-  }
-
-  const officeExts = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'];
-  if (officeExts.some((ext) => lower.endsWith(ext))) {
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
-      fileUrl
-    )}`;
-  }
-
-  return fileUrl;
-}
 
 export default function QualityPublishedPage() {
   const { company, currentRole } =
@@ -430,7 +381,7 @@ export default function QualityPublishedPage() {
             <Button
               size="xs"
               variant="subtle"
-              leftSection={<IconRefresh size={14} />}
+              leftSection={<IconReload size={14} />}
               onClick={loadDocuments}
             >
               Atualizar
@@ -460,7 +411,9 @@ export default function QualityPublishedPage() {
               { value: 'HIGH', label: 'Alto' },
             ]}
             value={riskFilter}
-            onChange={(value) => setRiskFilter((value as RiskFilter) || 'ALL')}
+            onChange={(value) =>
+              setRiskFilter((value as RiskFilter) || 'ALL')
+            }
             style={{ width: 160 }}
           />
         </Group>
@@ -518,7 +471,7 @@ export default function QualityPublishedPage() {
                                 </Text>
                               )}
                             </Stack>
-                            {riskBadge(doc.riskLevel)}
+                            <RiskBadge risk={doc.riskLevel} size="xs" />
                           </Group>
 
                           <Text size="xs" c="dimmed">
@@ -575,7 +528,7 @@ export default function QualityPublishedPage() {
                     )}
                   </Stack>
                   <Stack gap={4} align="flex-end">
-                    {riskBadge(selectedDoc.riskLevel)}
+                    <RiskBadge risk={selectedDoc.riskLevel} size="xs" />
                     <Group gap="xs">
                       <Button
                         size="xs"

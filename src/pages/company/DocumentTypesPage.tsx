@@ -19,6 +19,7 @@ import {
 } from '@mantine/core';
 import { IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
+import { formatDateTime } from '../../utils/documents';
 
 type DocTypeRow = {
   id: string;
@@ -65,16 +66,6 @@ export default function DocumentTypesPage() {
         </Stack>
       </Card>
     );
-  }
-
-  function formatDate(value?: string | null) {
-    if (!value) return '';
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return '';
-    return d.toLocaleString('pt-BR', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    });
   }
 
   async function loadTypes() {
@@ -388,9 +379,9 @@ export default function DocumentTypesPage() {
                 </Text>
                 {selectedType && (
                   <Text size="xs" c="dimmed">
-                    Criado em {formatDate(selectedType.created_at)}
+                    Criado em {formatDateTime(selectedType.created_at)}
                     {selectedType.updated_at &&
-                      ` · Atualizado em ${formatDate(
+                      ` · Atualizado em ${formatDateTime(
                         selectedType.updated_at
                       )}`}
                   </Text>

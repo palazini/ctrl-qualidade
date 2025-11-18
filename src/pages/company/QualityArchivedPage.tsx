@@ -18,15 +18,10 @@ import {
 import { IconAlertTriangle, IconSearch, IconTrash } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
 
-type VersionStage =
-  | 'SUBMITTED'
-  | 'UNDER_REVIEW'
-  | 'NEEDS_CHANGES'
-  | 'EDITED_BY_QUALITY'
-  | 'READY_TO_PUBLISH'
-  | 'PUBLISHED';
-
-type RiskLevel = 'LOW' | 'HIGH';
+// tipos/helpers centralizados
+import type { RiskLevel, VersionStage } from '../../types/documents';
+import { formatDateTime, buildPreviewUrl } from '../../utils/documents';
+import { RiskBadge } from '../../components/documents/RiskBadge';
 
 type ArchivedDoc = {
   id: string;
@@ -40,35 +35,6 @@ type ArchivedDoc = {
   fileName: string | null;
   lastStage: VersionStage | null;
 };
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  });
-}
-
-// mesmo helper das outras telas
-function buildPreviewUrl(fileUrl: string | null) {
-  if (!fileUrl) return null;
-  const lower = fileUrl.toLowerCase();
-
-  if (lower.endsWith('.pdf')) {
-    return fileUrl;
-  }
-
-  const officeExts = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'];
-  if (officeExts.some((ext) => lower.endsWith(ext))) {
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
-      fileUrl
-    )}`;
-  }
-
-  return fileUrl;
-}
 
 function stageBadge(stage: VersionStage | null) {
   if (!stage) {
@@ -105,11 +71,11 @@ function stageBadge(stage: VersionStage | null) {
 }
 
 function normalizeForCompare(value: string | null | undefined) {
-    if (!value) return '';
-    return value
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, ' '); // colapsa múltiplos espaços em um só
+  if (!value) return '';
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' '); // colapsa múltiplos espaços em um só
 }
 
 export default function QualityArchivedPage() {
@@ -311,104 +277,103 @@ export default function QualityArchivedPage() {
   }
 
   async function handlePermanentDelete(doc: ArchivedDoc) {
-    // mesma regra usada no disabled do botão
     const typed = normalizeForCompare(deleteConfirmText);
     const title = normalizeForCompare(doc.title);
 
     if (typed !== title) {
-        alert(
+      alert(
         'Para excluir permanentemente, digite exatamente o título do documento no campo indicado.'
-        );
-        return;
+      );
+      return;
     }
 
     setDeletingId(doc.id);
 
     try {
-        // 1) buscar versões para apagar arquivos no Storage
-        const { data: versions, error: vError } = await supabase
+      // 1) buscar versões para apagar arquivos no Storage
+      const { data: versions, error: vError } = await supabase
         .from('document_versions')
         .select('id, source_file_url, pdf_file_url')
         .eq('document_id', doc.id);
 
-        if (vError) {
+      if (vError) {
         console.error(vError);
         throw new Error('Falha ao buscar versões do documento.');
-        }
+      }
 
-        const pathsToDelete: string[] = [];
+      const pathsToDelete: string[] = [];
 
-        (versions ?? []).forEach((v: any) => {
-        const urls = [v.source_file_url as string | null, v.pdf_file_url as string | null];
+      (versions ?? []).forEach((v: any) => {
+        const urls = [
+          v.source_file_url as string | null,
+          v.pdf_file_url as string | null,
+        ];
 
         urls.forEach((url) => {
-            if (!url) return;
-            const marker = '/storage/v1/object/public/documents/';
-            const idx = url.indexOf(marker);
-            if (idx === -1) return;
-            const path = url.substring(idx + marker.length);
-            pathsToDelete.push(path);
-        });
-        });
+          if (!url) return;
 
-        if (pathsToDelete.length > 0) {
+          // ⚠️ Ajuste o marker/bucket se seus arquivos estiverem em buckets diferentes
+          const marker = '/storage/v1/object/public/documents/';
+          const idx = url.indexOf(marker);
+          if (idx === -1) return;
+          const path = url.substring(idx + marker.length);
+          pathsToDelete.push(path);
+        });
+      });
+
+      if (pathsToDelete.length > 0) {
         const { error: delStorageErr } = await supabase.storage
-            .from('documents')
-            .remove(pathsToDelete);
+          .from('documents')
+          .remove(pathsToDelete);
 
         if (delStorageErr) {
-            console.error('Erro ao remover arquivos do Storage:', delStorageErr);
+          console.error('Erro ao remover arquivos do Storage:', delStorageErr);
         }
-        }
+      }
 
-        // 2) limpar current_version_id para liberar a FK
-        const { error: clearCurrentErr } = await supabase
-            .from('documents')
-            .update({ current_version_id: null })
-            .eq('id', doc.id);
+      // 2) limpar current_version_id para liberar a FK
+      const { error: clearCurrentErr } = await supabase
+        .from('documents')
+        .update({ current_version_id: null })
+        .eq('id', doc.id);
 
-        if (clearCurrentErr) {
-            console.error(clearCurrentErr);
-            throw new Error(
-                'Falha ao limpar a versão atual do documento antes da exclusão.'
-            );
-        }
+      if (clearCurrentErr) {
+        console.error(clearCurrentErr);
+        throw new Error(
+          'Falha ao limpar a versão atual do documento antes da exclusão.'
+        );
+      }
 
-        // 3) apaga versões
-        const { error: delVersionsErr } = await supabase
-            .from('document_versions')
-            .delete()
-            .eq('document_id', doc.id);
+      // 3) apaga versões
+      const { error: delVersionsErr } = await supabase
+        .from('document_versions')
+        .delete()
+        .eq('document_id', doc.id);
 
-        if (delVersionsErr) {
-            console.error(delVersionsErr);
-            throw new Error('Falha ao excluir versões do documento.');
-        }
+      if (delVersionsErr) {
+        console.error(delVersionsErr);
+        throw new Error('Falha ao excluir versões do documento.');
+      }
 
-        // 4) apaga o documento
-        const { error: delDocErr } = await supabase
-            .from('documents')
-            .delete()
-            .eq('id', doc.id);
+      // 4) apaga o documento
+      const { error: delDocErr } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', doc.id);
 
-        if (delDocErr) {
-            console.error(delDocErr);
-            throw new Error('Falha ao excluir o documento.');
-        }
+      if (delDocErr) {
+        console.error(delDocErr);
+        throw new Error('Falha ao excluir o documento.');
+      }
 
-        if (delDocErr) {
-            console.error(delDocErr);
-            throw new Error('Falha ao excluir o documento.');
-        }
-
-        // limpa campo e recarrega lista
-        setDeleteConfirmText('');
-        await loadArchivedDocs();
+      // limpa campo e recarrega lista
+      setDeleteConfirmText('');
+      await loadArchivedDocs();
     } catch (err: any) {
-        console.error(err);
-        alert(err.message || 'Erro ao excluir documento.');
+      console.error(err);
+      alert(err.message || 'Erro ao excluir documento.');
     } finally {
-        setDeletingId(null);
+      setDeletingId(null);
     }
   }
 
@@ -495,20 +460,6 @@ export default function QualityArchivedPage() {
                       const isActive = doc.id === selectedDoc?.id;
                       const updatedLabel = formatDateTime(doc.updatedAt);
 
-                      const riskLabel =
-                        doc.riskLevel === 'HIGH'
-                          ? 'Risco alto'
-                          : doc.riskLevel === 'LOW'
-                          ? 'Risco baixo'
-                          : 'Risco não informado';
-
-                      const riskColor =
-                        doc.riskLevel === 'HIGH'
-                          ? 'red'
-                          : doc.riskLevel === 'LOW'
-                          ? 'green'
-                          : 'gray';
-
                       return (
                         <Card
                           key={doc.id}
@@ -541,13 +492,7 @@ export default function QualityArchivedPage() {
                               </Stack>
                               <Stack gap={4} align="flex-end">
                                 {stageBadge(doc.lastStage)}
-                                <Badge
-                                  size="xs"
-                                  color={riskColor}
-                                  variant="light"
-                                >
-                                  {riskLabel}
-                                </Badge>
+                                <RiskBadge risk={doc.riskLevel} size="xs" />
                               </Stack>
                             </Group>
 
@@ -587,19 +532,7 @@ export default function QualityArchivedPage() {
                     </Stack>
                     <Stack gap={4} align="flex-end">
                       {stageBadge(selectedDoc.lastStage)}
-                      {selectedDoc.riskLevel && (
-                        <Badge
-                          size="xs"
-                          color={
-                            selectedDoc.riskLevel === 'HIGH' ? 'red' : 'green'
-                          }
-                          variant="light"
-                        >
-                          {selectedDoc.riskLevel === 'HIGH'
-                            ? 'Risco alto'
-                            : 'Risco baixo'}
-                        </Badge>
-                      )}
+                      <RiskBadge risk={selectedDoc.riskLevel} size="xs" />
                     </Stack>
                   </Group>
 
@@ -705,18 +638,18 @@ export default function QualityArchivedPage() {
 
                   <Group justify="flex-end">
                     <Button
-                        size="xs"
-                        color="red"
-                        variant="filled"
-                        leftSection={<IconTrash size={14} />}
-                        disabled={
-                            normalizeForCompare(deleteConfirmText) !==
-                            normalizeForCompare(selectedDoc.title)
-                        }
-                        loading={deletingId === selectedDoc.id}
-                        onClick={() => handlePermanentDelete(selectedDoc)}
-                        >
-                        Excluir permanentemente
+                      size="xs"
+                      color="red"
+                      variant="filled"
+                      leftSection={<IconTrash size={14} />}
+                      disabled={
+                        normalizeForCompare(deleteConfirmText) !==
+                        normalizeForCompare(selectedDoc.title)
+                      }
+                      loading={deletingId === selectedDoc.id}
+                      onClick={() => handlePermanentDelete(selectedDoc)}
+                    >
+                      Excluir permanentemente
                     </Button>
                   </Group>
                 </Stack>

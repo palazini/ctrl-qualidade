@@ -17,16 +17,18 @@ import {
   TextInput,
 } from '@mantine/core';
 import { Dropzone, MIME_TYPES } from '@mantine/dropzone';
-import { IconUpload, IconX } from '@tabler/icons-react';
+import {
+  IconUpload,
+  IconX,
+  IconSearch,
+  IconReload,
+} from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
 
-type VersionStage =
-  | 'SUBMITTED'
-  | 'UNDER_REVIEW'
-  | 'NEEDS_CHANGES'
-  | 'EDITED_BY_QUALITY'
-  | 'READY_TO_PUBLISH'
-  | 'PUBLISHED';
+// imports centralizados
+import type { VersionStage, RiskLevel } from '../../types/documents';
+import { formatDateTime, buildPreviewUrl } from '../../utils/documents';
+import { RiskBadge } from '../../components/documents/RiskBadge';
 
 type VersionRow = {
   id: string;
@@ -42,8 +44,6 @@ type DocTypeRow = {
   name: string;
   code: string | null;
 };
-
-type RiskLevel = 'LOW' | 'HIGH';
 
 type DocumentRow = {
   id: string;
@@ -116,38 +116,6 @@ function stageBadge(stage: VersionStage | null) {
   );
 }
 
-function formatDateTime(value: string) {
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  });
-}
-
-// Helper para embutir pré-visualização
-function buildPreviewUrl(fileUrl: string | null) {
-  if (!fileUrl) return null;
-
-  const lower = fileUrl.toLowerCase();
-
-  // PDF o navegador mostra direto
-  if (lower.endsWith('.pdf')) {
-    return fileUrl;
-  }
-
-  // Extensões Office → Office Web Viewer
-  const officeExts = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'];
-  if (officeExts.some((ext) => lower.endsWith(ext))) {
-    return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
-      fileUrl
-    )}`;
-  }
-
-  // fallback
-  return fileUrl;
-}
-
 export default function QualityPage() {
   const { company, currentRole, appUser } =
     useOutletContext<CompanyOutletContext>();
@@ -167,6 +135,8 @@ export default function QualityPage() {
   const [elaborator, setElaborator] = useState<string>('');
   const [approver, setApprover] = useState<string>('');
   const [riskLevel, setRiskLevel] = useState<RiskLevel | null>(null);
+
+  const [search, setSearch] = useState('');
 
   const bucketName = 'documents-source';
 
@@ -265,9 +235,7 @@ export default function QualityPage() {
             )[0];
 
       const dt =
-        doc.doc_type && doc.doc_type.length > 0
-          ? doc.doc_type[0]
-          : null;
+        doc.doc_type && doc.doc_type.length > 0 ? doc.doc_type[0] : null;
 
       const typeLabel =
         dt && dt.code
@@ -322,10 +290,19 @@ export default function QualityPage() {
     [docs, selectedId]
   );
 
-  // URL de preview (pdf direto, office via viewer)
+  const filteredDocs = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return docs;
+    return docs.filter((d) => {
+      const haystack = `${d.title} ${d.code ?? ''}`.toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [docs, search]);
+
+  // URL de preview
   const previewUrl = buildPreviewUrl(selectedDoc?.lastFileUrl ?? null);
 
-  // sempre que mudar o documento selecionado, pré-preenche o tipo, se existir
+  // sempre que mudar o documento selecionado, pré-preenche o tipo e campos de publicação
   useEffect(() => {
     if (!selectedDoc) {
       setSelectedTypeId(null);
@@ -372,7 +349,6 @@ export default function QualityPage() {
         .getPublicUrl(path);
 
       const publicUrl = publicUrlData?.publicUrl ?? null;
-
       const newVersionNumber = (selectedDoc.lastVersionNumber || 0) + 1;
 
       const { data: versionInsertData, error: versionError } =
@@ -485,10 +461,10 @@ export default function QualityPage() {
           document_type_id: selectedTypeId,
           current_version_id: selectedDoc.lastVersionId,
           updated_at: nowIso,
-          published_at: nowIso,          // data da publicação
-          elaborator: elaborator.trim(), // quem elaborou
-          approver: approver.trim(),     // quem aprovou
-          risk_level: riskLevel,         // LOW ou HIGH
+          published_at: nowIso,
+          elaborator: elaborator.trim(),
+          approver: approver.trim(),
+          risk_level: riskLevel,
         })
         .eq('id', selectedDoc.id);
 
@@ -548,10 +524,26 @@ export default function QualityPage() {
     <Card withBorder shadow="sm" radius="md">
       <Stack gap="sm" h="100%">
         <Group justify="space-between" align="center">
-          <Text fw={500}>Documentos em revisão</Text>
-          <Badge variant="light" color="blue">
-            {docs.length} documento(s)
-          </Badge>
+          <Stack gap={2}>
+            <Text fw={500}>Documentos em revisão</Text>
+            <Text size="xs" c="dimmed">
+              Revise, ajuste, classifique o risco e aprove para publicação.
+            </Text>
+          </Stack>
+          <Group gap="xs">
+            <Badge variant="light" color="blue">
+              {docs.length} documento(s)
+            </Badge>
+            <Button
+              size="xs"
+              variant="subtle"
+              radius="xl"
+              leftSection={<IconReload size={14} />}
+              onClick={loadDocuments}
+            >
+              Atualizar
+            </Button>
+          </Group>
         </Group>
 
         <SimpleGrid
@@ -561,62 +553,84 @@ export default function QualityPage() {
         >
           {/* Lista à esquerda */}
           <Card withBorder radius="md" shadow="xs">
-            <ScrollArea h="60vh" type="always">
-              <Stack gap="xs" pr="xs">
-                {docs.map((doc) => {
-                  const isActive = doc.id === selectedDoc?.id;
-                  const updatedLabel = formatDateTime(doc.updatedAt);
+            <Stack gap="sm">
+              <TextInput
+                label="Buscar"
+                placeholder="Título ou código..."
+                value={search}
+                onChange={(e) => setSearch(e.currentTarget.value)}
+                leftSection={<IconSearch size={14} />}
+                size="xs"
+              />
 
-                  return (
-                    <Card
-                      key={doc.id}
-                      withBorder
-                      radius="md"
-                      shadow={isActive ? 'sm' : 'xs'}
-                      onClick={() => setSelectedId(doc.id)}
-                      style={{
-                        cursor: 'pointer',
-                        borderColor: isActive ? '#228be6' : undefined,
-                        backgroundColor: isActive ? '#f5f9ff' : undefined,
-                      }}
-                    >
-                      <Stack gap={4}>
-                        <Group justify="space-between" align="flex-start">
-                          <Stack gap={0}>
-                            <Text fw={500} size="sm">
-                              {doc.title}
-                            </Text>
-                            {doc.code && (
+              <ScrollArea h="60vh" type="always">
+                <Stack gap="xs" pr="xs">
+                  {filteredDocs.length === 0 ? (
+                    <Center h={200}>
+                      <Text size="sm" c="dimmed">
+                        Nenhum documento encontrado com o termo informado.
+                      </Text>
+                    </Center>
+                  ) : (
+                    filteredDocs.map((doc) => {
+                      const isActive = doc.id === selectedDoc?.id;
+                      const updatedLabel = formatDateTime(doc.updatedAt);
+
+                      return (
+                        <Card
+                          key={doc.id}
+                          withBorder
+                          radius="md"
+                          shadow={isActive ? 'sm' : 'xs'}
+                          onClick={() => setSelectedId(doc.id)}
+                          style={{
+                            cursor: 'pointer',
+                            borderColor: isActive ? '#228be6' : undefined,
+                            backgroundColor: isActive ? '#f5f9ff' : undefined,
+                          }}
+                        >
+                          <Stack gap={4}>
+                            <Group justify="space-between" align="flex-start">
+                              <Stack gap={0}>
+                                <Text fw={500} size="sm">
+                                  {doc.title}
+                                </Text>
+                                {doc.code && (
+                                  <Text size="xs" c="dimmed">
+                                    Código: {doc.code}
+                                  </Text>
+                                )}
+                                {doc.docTypeLabel && (
+                                  <Text size="xs" c="dimmed">
+                                    Tipo: {doc.docTypeLabel}
+                                  </Text>
+                                )}
+                              </Stack>
+                              <Stack gap={4} align="flex-end">
+                                {stageBadge(doc.lastStage)}
+                                <RiskBadge risk={doc.riskLevel} size="xs" />
+                              </Stack>
+                            </Group>
+
+                            {doc.lastFileName && (
                               <Text size="xs" c="dimmed">
-                                Código: {doc.code}
+                                Último arquivo: {doc.lastFileName}
                               </Text>
                             )}
-                            {doc.docTypeLabel && (
+
+                            {updatedLabel && (
                               <Text size="xs" c="dimmed">
-                                Tipo: {doc.docTypeLabel}
+                                Atualizado em: {updatedLabel}
                               </Text>
                             )}
                           </Stack>
-                          {stageBadge(doc.lastStage)}
-                        </Group>
-
-                        {doc.lastFileName && (
-                          <Text size="xs" c="dimmed">
-                            Último arquivo: {doc.lastFileName}
-                          </Text>
-                        )}
-
-                        {updatedLabel && (
-                          <Text size="xs" c="dimmed">
-                            Atualizado em: {updatedLabel}
-                          </Text>
-                        )}
-                      </Stack>
-                    </Card>
-                  );
-                })}
-              </Stack>
-            </ScrollArea>
+                        </Card>
+                      );
+                    })
+                  )}
+                </Stack>
+              </ScrollArea>
+            </Stack>
           </Card>
 
           {/* Detalhes à direita */}
@@ -633,7 +647,10 @@ export default function QualityPage() {
                         </Text>
                       )}
                     </Stack>
-                    {stageBadge(selectedDoc.lastStage)}
+                    <Stack gap={4} align="flex-end">
+                      {stageBadge(selectedDoc.lastStage)}
+                      <RiskBadge risk={selectedDoc.riskLevel} size="xs" />
+                    </Stack>
                   </Group>
 
                   {selectedDoc.lastFileName && (
@@ -644,15 +661,13 @@ export default function QualityPage() {
 
                   {selectedDoc.updatedAt && (
                     <Text size="xs" c="dimmed">
-                      Atualizado em:{' '}
-                      {formatDateTime(selectedDoc.updatedAt)}
+                      Atualizado em: {formatDateTime(selectedDoc.updatedAt)}
                     </Text>
                   )}
 
                   {selectedDoc.docTypeLabel && (
                     <Text size="xs" c="dimmed">
-                      Tipo atual:{' '}
-                      <b>{selectedDoc.docTypeLabel}</b>
+                      Tipo atual: <b>{selectedDoc.docTypeLabel}</b>
                     </Text>
                   )}
                 </Stack>
@@ -714,7 +729,7 @@ export default function QualityPage() {
                   size="xs"
                 />
 
-                {/* Visualização online - área maior */}
+                {/* Visualização online */}
                 <Stack gap={4} mt="sm">
                   <Text fw={500} size="sm">
                     Visualização online
@@ -745,12 +760,11 @@ export default function QualityPage() {
                   )}
                   <Text size="xs" c="dimmed">
                     A visualização usa o leitor do navegador/Office online.
-                    Use a rolagem e zoom da própria área de preview conforme
-                    necessário.
+                    Use a rolagem e zoom da própria área de preview.
                   </Text>
                 </Stack>
 
-                {/* Upload de nova versão - mais compacto, abaixo do preview */}
+                {/* Upload de nova versão */}
                 <Stack gap="xs" mt="sm">
                   <Text fw={500} size="sm">
                     Enviar nova versão (edição pela Qualidade)

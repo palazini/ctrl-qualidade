@@ -18,13 +18,9 @@ import { Dropzone, MIME_TYPES } from '@mantine/dropzone';
 import { IconUpload, IconX } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
 
-type VersionStage =
-  | 'SUBMITTED'
-  | 'UNDER_REVIEW'
-  | 'NEEDS_CHANGES'
-  | 'EDITED_BY_QUALITY'
-  | 'READY_TO_PUBLISH'
-  | 'PUBLISHED';
+// tipos/helpers centralizados
+import type { VersionStage } from '../../types/documents';
+import { formatDateTime, prettyTitleFromFilename } from '../../utils/documents';
 
 type VersionRow = {
   id: string;
@@ -104,20 +100,6 @@ function documentStatusLabel(status: string | null | undefined) {
     default:
       return 'Status não informado';
   }
-}
-
-function formatDateTime(value: string) {
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  });
-}
-
-// Gera um título amigável a partir do nome do arquivo
-function prettyTitleFromFilename(name: string) {
-  return name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ');
 }
 
 export default function PublisherPage() {
@@ -249,19 +231,20 @@ export default function PublisherPage() {
       const documentId = docInsertData.id as string;
 
       // 3) Criar primeira versão
-      const { data: versionInsertData, error: versionError } = await supabase
-        .from('document_versions')
-        .insert({
-          document_id: documentId,
-          version_number: 1,
-          stage: 'SUBMITTED', // enviada para análise
-          source_file_name: file.name,
-          source_file_url: publicUrl,
-          source_mime_type: file.type || 'application/octet-stream',
-          uploaded_by: userId,
-        })
-        .select('id')
-        .single();
+      const { data: versionInsertData, error: versionError } =
+        await supabase
+          .from('document_versions')
+          .insert({
+            document_id: documentId,
+            version_number: 1,
+            stage: 'SUBMITTED', // enviada para análise
+            source_file_name: file.name,
+            source_file_url: publicUrl,
+            source_mime_type: file.type || 'application/octet-stream',
+            uploaded_by: userId,
+          })
+          .select('id')
+          .single();
 
       if (versionError || !versionInsertData) {
         console.error(versionError);
@@ -309,7 +292,7 @@ export default function PublisherPage() {
     setDeletingId(doc.id);
 
     try {
-      // 1) Buscar versões para tentar limpar os arquivos no Storage
+      // 1) Buscar versões para limpar os arquivos no Storage
       const { data: versions, error: vError } = await supabase
         .from('document_versions')
         .select('id, source_file_url')
