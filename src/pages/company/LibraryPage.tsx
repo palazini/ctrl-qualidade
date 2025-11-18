@@ -14,12 +14,7 @@ import {
   ScrollArea,
   TextInput,
 } from '@mantine/core';
-import {
-  IconSearch,
-  IconArrowLeft,
-  IconFileDownload,
-  IconReload,
-} from '@tabler/icons-react';
+import { IconSearch, IconArrowLeft, IconReload } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
 
 // imports centralizados
@@ -313,7 +308,7 @@ export default function LibraryPage() {
       style={{ height: 'calc(100vh - 120px)' }}
     >
       <Stack gap="sm" h="100%">
-        {/* Barra superior bem enxuta */}
+        {/* Barra superior enxuta */}
         <Group justify="space-between" align="center">
           <Group gap="xs">
             <Button
@@ -351,23 +346,14 @@ export default function LibraryPage() {
             </Stack>
           </Group>
 
-          <Group gap="xs">
+          <Stack gap={2} align="flex-end">
             <RiskBadge risk={selectedDoc.riskLevel} size="xs" />
-
-            {selectedDoc.fileUrl && (
-              <Button
-                size="xs"
-                variant="light"
-                leftSection={<IconFileDownload size={14} />}
-                component="a"
-                href={selectedDoc.fileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Baixar
-              </Button>
+            {selectedDoc.publishedAt && (
+              <Text size="xs" c="dimmed">
+                Publicado em: {formatDateTime(selectedDoc.publishedAt)}
+              </Text>
             )}
-          </Group>
+          </Stack>
         </Group>
 
         {/* Preview ocupando praticamente todo o espaço */}

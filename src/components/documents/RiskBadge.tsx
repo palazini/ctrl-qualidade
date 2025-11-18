@@ -4,7 +4,8 @@ import type { RiskLevel } from '../../types/documents';
 import { getRiskColor, getRiskLabel } from '../../utils/documents';
 
 type Props = {
-  risk: RiskLevel | null | undefined;
+  // pode vir 'LOW' | 'HIGH' | null | undefined de qualquer tela
+  risk?: RiskLevel | null;
   size?: 'xs' | 'sm' | 'md';
 };
 

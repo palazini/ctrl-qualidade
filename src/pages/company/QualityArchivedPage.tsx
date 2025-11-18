@@ -70,16 +70,67 @@ function stageBadge(stage: VersionStage | null) {
   );
 }
 
+// Tipos do histórico de ações (mesmos usados nas outras telas)
+type DocumentActionType =
+  | 'PUBLISHED'
+  | 'SENT_BACK_TO_REVIEW'
+  | 'ARCHIVED'
+  | 'UNARCHIVED'
+  | 'DELETED';
+
+type DocumentActionLog = {
+  id: string;
+  action: DocumentActionType;
+  comment: string | null;
+  performed_by_name: string | null;
+  performed_by_email: string | null;
+  created_at: string;
+};
+
+function actionLabel(action: DocumentActionType): string {
+  switch (action) {
+    case 'PUBLISHED':
+      return 'Publicado';
+    case 'SENT_BACK_TO_REVIEW':
+      return 'Enviado para revisão';
+    case 'ARCHIVED':
+      return 'Arquivado';
+    case 'UNARCHIVED':
+      return 'Desarquivado';
+    case 'DELETED':
+      return 'Excluído';
+    default:
+      return action;
+  }
+}
+
+function actionColor(action: DocumentActionType): string {
+  switch (action) {
+    case 'PUBLISHED':
+      return 'green';
+    case 'SENT_BACK_TO_REVIEW':
+      return 'blue';
+    case 'ARCHIVED':
+      return 'gray';
+    case 'UNARCHIVED':
+      return 'teal';
+    case 'DELETED':
+      return 'red';
+    default:
+      return 'gray';
+  }
+}
+
 function normalizeForCompare(value: string | null | undefined) {
   if (!value) return '';
   return value
     .toLowerCase()
     .trim()
-    .replace(/\s+/g, ' '); // colapsa múltiplos espaços em um só
+    .replace(/\s+/g, ' ');
 }
 
 export default function QualityArchivedPage() {
-  const { company, currentRole, appUser } =
+  const { company, currentRole, appUser, userEmail } =
     useOutletContext<CompanyOutletContext>();
 
   const [loading, setLoading] = useState(true);
@@ -91,6 +142,10 @@ export default function QualityArchivedPage() {
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  // histórico
+  const [actions, setActions] = useState<DocumentActionLog[]>([]);
+  const [loadingActions, setLoadingActions] = useState(false);
 
   const isQualityOrAdmin =
     currentRole === 'GESTOR_QUALIDADE' || appUser.system_role === 'SITE_ADMIN';
@@ -222,6 +277,29 @@ export default function QualityArchivedPage() {
     setLoading(false);
   }
 
+  async function loadActions(documentId: string) {
+    setLoadingActions(true);
+    try {
+      const { data, error } = await supabase
+        .from('document_actions')
+        .select(
+          'id, action, comment, performed_by_name, performed_by_email, created_at'
+        )
+        .eq('document_id', documentId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setActions([]);
+        return;
+      }
+
+      setActions((data ?? []) as DocumentActionLog[]);
+    } finally {
+      setLoadingActions(false);
+    }
+  }
+
   useEffect(() => {
     loadArchivedDocs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,6 +321,16 @@ export default function QualityArchivedPage() {
 
   const previewUrl = buildPreviewUrl(selectedDoc?.fileUrl ?? null);
 
+  // sempre que muda o documento selecionado, recarrega o histórico
+  useEffect(() => {
+    if (!selectedDoc) {
+      setActions([]);
+      return;
+    }
+    loadActions(selectedDoc.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDoc?.id]);
+
   async function handleUnarchive(doc: ArchivedDoc) {
     const confirmed = window.confirm(
       'Deseja desarquivar este documento e retorná-lo para a biblioteca?'
@@ -254,7 +342,7 @@ export default function QualityArchivedPage() {
     try {
       const nowIso = new Date().toISOString();
 
-      const { error } = await supabase
+      const { error: docErr } = await supabase
         .from('documents')
         .update({
           status: 'PUBLISHED',
@@ -262,9 +350,25 @@ export default function QualityArchivedPage() {
         })
         .eq('id', doc.id);
 
-      if (error) {
-        console.error(error);
+      if (docErr) {
+        console.error(docErr);
         throw new Error('Falha ao desarquivar documento.');
+      }
+
+      // registra ação de UNARCHIVED
+      const { error: logErr } = await supabase
+        .from('document_actions')
+        .insert({
+          document_id: doc.id,
+          performed_by: appUser.id,
+          performed_by_name: appUser.full_name,
+          performed_by_email: userEmail,
+          action: 'UNARCHIVED',
+          comment: null,
+        });
+
+      if (logErr) {
+        console.error('Falha ao registrar ação de desarquivamento:', logErr);
       }
 
       await loadArchivedDocs();
@@ -290,6 +394,22 @@ export default function QualityArchivedPage() {
     setDeletingId(doc.id);
 
     try {
+      // registra ação DELETED (antes da deleção de fato)
+      const { error: logErr } = await supabase
+        .from('document_actions')
+        .insert({
+          document_id: doc.id,
+          performed_by: appUser.id,
+          performed_by_name: appUser.full_name,
+          performed_by_email: userEmail,
+          action: 'DELETED',
+          comment: null,
+        });
+
+      if (logErr) {
+        console.error('Falha ao registrar ação de exclusão:', logErr);
+      }
+
       // 1) buscar versões para apagar arquivos no Storage
       const { data: versions, error: vError } = await supabase
         .from('document_versions')
@@ -572,7 +692,7 @@ export default function QualityArchivedPage() {
                       border: '1px solid #e1e4e8',
                       borderRadius: 8,
                       overflow: 'hidden',
-                      height: '40vh',
+                      height: '35vh',
                     }}
                   >
                     {previewUrl ? (
@@ -593,6 +713,59 @@ export default function QualityArchivedPage() {
                       </Center>
                     )}
                   </div>
+                </Stack>
+
+                {/* Histórico de ações */}
+                <Stack gap={4} mt="sm">
+                  <Text fw={500} size="sm">
+                    Histórico de ações
+                  </Text>
+                  {loadingActions ? (
+                    <Text size="xs" c="dimmed">
+                      Carregando histórico...
+                    </Text>
+                  ) : actions.length === 0 ? (
+                    <Text size="xs" c="dimmed">
+                      Nenhuma ação registrada ainda para este documento.
+                    </Text>
+                  ) : (
+                    <ScrollArea h={120} type="always">
+                      <Stack gap={6} pr="xs">
+                        {actions.map((a) => (
+                          <Group
+                            key={a.id}
+                            align="flex-start"
+                            gap="xs"
+                            wrap="nowrap"
+                          >
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color={actionColor(a.action)}
+                            >
+                              {actionLabel(a.action)}
+                            </Badge>
+                            <Stack gap={0} style={{ flex: 1 }}>
+                              <Text size="xs">
+                                {formatDateTime(a.created_at)} —{' '}
+                                {a.performed_by_name || 'Usuário'}{' '}
+                                {a.performed_by_email && (
+                                  <Text span size="xs" c="dimmed">
+                                    ({a.performed_by_email})
+                                  </Text>
+                                )}
+                              </Text>
+                              {a.comment && (
+                                <Text size="xs" c="dimmed">
+                                  {a.comment}
+                                </Text>
+                              )}
+                            </Stack>
+                          </Group>
+                        ))}
+                      </Stack>
+                    </ScrollArea>
+                  )}
                 </Stack>
 
                 {/* Zona de perigo: exclusão definitiva */}

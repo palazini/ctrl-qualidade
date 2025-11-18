@@ -38,3 +38,41 @@ export const VERSION_STAGE_COLORS: Record<VersionStage, string> = {
   READY_TO_PUBLISH: 'teal',
   PUBLISHED: 'green',
 };
+
+export type DocumentActionType =
+  | 'PUBLISHED'
+  | 'SENT_BACK_TO_REVIEW'
+  | 'ARCHIVED'
+  | 'UNARCHIVED'
+  | 'DELETED';
+
+// Shape genérico de um registro da tabela document_actions
+export type DocumentActionLog = {
+  id: string;
+  action: DocumentActionType;
+  comment: string | null;
+  performed_by_name: string | null;
+  performed_by_email: string | null;
+  created_at: string;
+
+  // esses campos podem existir no select, mas são opcionais
+  performed_by?: string | null;
+  document_id?: string | null;
+};
+
+// Label e cor padrão para cada ação
+export const DOCUMENT_ACTION_LABELS: Record<DocumentActionType, string> = {
+  PUBLISHED: 'Publicado',
+  SENT_BACK_TO_REVIEW: 'Enviado para revisão',
+  ARCHIVED: 'Arquivado',
+  UNARCHIVED: 'Desarquivado',
+  DELETED: 'Excluído',
+};
+
+export const DOCUMENT_ACTION_COLORS: Record<DocumentActionType, string> = {
+  PUBLISHED: 'green',
+  SENT_BACK_TO_REVIEW: 'blue',
+  ARCHIVED: 'gray',
+  UNARCHIVED: 'teal',
+  DELETED: 'red',
+};

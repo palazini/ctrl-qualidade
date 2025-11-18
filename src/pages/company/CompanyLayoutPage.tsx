@@ -7,6 +7,8 @@ import {
   Card,
   Stack,
   Text,
+  Group,
+  Burger,
 } from '@mantine/core';
 import {
   useParams,
@@ -14,6 +16,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import { useDisclosure } from '@mantine/hooks';
 import { useAuth } from '../../auth/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import { CompanyHeader } from '../../components/layout/CompanyHeader';
@@ -60,6 +63,10 @@ export default function CompanyLayoutPage() {
   const [memberships, setMemberships] = useState<UserCompany[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // controla abrir/fechar navbar no mobile
+  const [navbarOpened, { toggle: toggleNavbar, close: closeNavbar }] =
+    useDisclosure(false);
+
   useEffect(() => {
     if (!userId) {
       setLoading(false);
@@ -103,10 +110,11 @@ export default function CompanyLayoutPage() {
 
       setAppUser(appUserData);
 
-      const { data: membershipsData, error: membershipsError } = await supabase
-        .from('user_companies')
-        .select(
-          `
+      const { data: membershipsData, error: membershipsError } =
+        await supabase
+          .from('user_companies')
+          .select(
+            `
           id,
           role,
           is_default,
@@ -115,9 +123,9 @@ export default function CompanyLayoutPage() {
             name,
             slug
           )
-        `
-        )
-        .eq('user_id', userId);
+        `,
+          )
+          .eq('user_id', userId);
 
       if (!isMounted) return;
 
@@ -169,7 +177,7 @@ export default function CompanyLayoutPage() {
     if (last === 'quality-archived') return 'qualityArchived';
     if (last === 'doc-types') return 'docTypes';
     if (last === 'admin') return 'admin';
-    // se estiver em /profile, vai cair em 'library' (ok, não precisamos acender nada específico)
+    // se estiver em /profile, vai cair em 'library' (ok)
     return 'library';
   }, [location.pathname]);
 
@@ -185,10 +193,7 @@ export default function CompanyLayoutPage() {
 
   function renderCentered(main: ReactNode) {
     return (
-      <AppShell
-        header={{ height: 72 }}
-        padding="md"
-      >
+      <AppShell header={{ height: 72 }} padding="md">
         <AppShell.Header>
           <CompanyHeader
             companyName={
@@ -224,7 +229,7 @@ export default function CompanyLayoutPage() {
             novamente.
           </Text>
         </Stack>
-      </Card>
+      </Card>,
     );
   }
 
@@ -237,7 +242,7 @@ export default function CompanyLayoutPage() {
             A rota não informa qual companhia deve ser acessada.
           </Text>
         </Stack>
-      </Card>
+      </Card>,
     );
   }
 
@@ -254,7 +259,7 @@ export default function CompanyLayoutPage() {
             {error}
           </Text>
         </Stack>
-      </Card>
+      </Card>,
     );
   }
 
@@ -264,11 +269,11 @@ export default function CompanyLayoutPage() {
         <Stack gap="xs">
           <Text fw={600}>Usuário não configurado</Text>
           <Text size="sm" c="dimmed">
-            Seu e-mail está autenticado, mas ainda não existe um cadastro
-            de usuário de aplicação vinculado no sistema.
+            Seu e-mail está autenticado, mas ainda não existe um cadastro de
+            usuário de aplicação vinculado no sistema.
           </Text>
         </Stack>
-      </Card>
+      </Card>,
     );
   }
 
@@ -285,7 +290,7 @@ export default function CompanyLayoutPage() {
             .
           </Text>
         </Stack>
-      </Card>
+      </Card>,
     );
   }
 
@@ -300,6 +305,9 @@ export default function CompanyLayoutPage() {
   const canSeeAdmin = appUser.system_role === 'SITE_ADMIN';
 
   const handleChangeView = (view: CompanyView) => {
+    // ao trocar de view no mobile, fecha o navbar
+    closeNavbar();
+
     switch (view) {
       case 'library':
         navigate('library');
@@ -337,20 +345,34 @@ export default function CompanyLayoutPage() {
   return (
     <AppShell
       header={{ height: 72 }}
-      navbar={{ width: 260, breakpoint: 'sm' }}
+      navbar={{
+        width: 260,
+        breakpoint: 'sm',
+        collapsed: { mobile: !navbarOpened },
+      }}
       padding="md"
     >
       <AppShell.Header>
-        <CompanyHeader
-          companyName={currentMembership.company.name}
-          appUserName={appUser.full_name}
-          userEmail={userEmail}
-          hasMultipleCompanies={hasMultipleCompanies}
-          onChangeCompany={() => navigate('/', { replace: true })}
-          onLogout={handleLogout}
-          onGoProfile={() => navigate('profile')}
-          companyLogoUrl={getCompanyLogoUrl()}
-        />
+        <Group h="100%" px="md" justify="space-between">
+          <CompanyHeader
+            companyName={currentMembership.company.name}
+            appUserName={appUser.full_name}
+            userEmail={userEmail}
+            hasMultipleCompanies={hasMultipleCompanies}
+            onChangeCompany={() => navigate('/', { replace: true })}
+            onLogout={handleLogout}
+            onGoProfile={() => navigate('profile')}
+            companyLogoUrl={getCompanyLogoUrl()}
+          />
+
+          <Burger
+            opened={navbarOpened}
+            onClick={toggleNavbar}
+            hiddenFrom="sm"
+            size="sm"
+            aria-label="Abrir menu"
+          />
+        </Group>
       </AppShell.Header>
 
       <AppShell.Navbar p="md">

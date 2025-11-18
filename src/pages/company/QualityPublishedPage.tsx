@@ -15,13 +15,15 @@ import {
   SimpleGrid,
   TextInput,
   Select,
+  Modal,
+  Textarea,
 } from '@mantine/core';
-import { IconSearch, IconReload } from '@tabler/icons-react';
+import { IconSearch, IconRefresh } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
 
-// tipos/helpers centralizados
+// novos imports centralizados
 import type { RiskLevel } from '../../types/documents';
-import { formatDateTime, buildPreviewUrl } from '../../utils/documents';
+import { buildPreviewUrl, formatDateTime } from '../../utils/documents';
 import { RiskBadge } from '../../components/documents/RiskBadge';
 
 type VersionRow = {
@@ -70,10 +72,63 @@ type PublishedDoc = {
   fileName: string | null;
 };
 
-type RiskFilter = 'ALL' | 'LOW' | 'HIGH';
+type RiskFilter = 'ALL' | RiskLevel;
+
+// tipos das ações registradas em histórico
+type DocumentActionType =
+  | 'PUBLISHED'
+  | 'SENT_BACK_TO_REVIEW'
+  | 'ARCHIVED'
+  | 'UNARCHIVED'
+  | 'DELETED';
+
+type DocumentActionLog = {
+  id: string;
+  action: DocumentActionType;
+  comment: string | null;
+  performed_by_name: string | null;
+  performed_by_email: string | null;
+  created_at: string;
+};
+
+type PendingActionMode = 'ARCHIVE' | 'SEND_BACK' | null;
+
+function actionLabel(action: DocumentActionType): string {
+  switch (action) {
+    case 'PUBLISHED':
+      return 'Publicado';
+    case 'SENT_BACK_TO_REVIEW':
+      return 'Enviado para revisão';
+    case 'ARCHIVED':
+      return 'Arquivado';
+    case 'UNARCHIVED':
+      return 'Desarquivado';
+    case 'DELETED':
+      return 'Excluído';
+    default:
+      return action;
+  }
+}
+
+function actionColor(action: DocumentActionType): string {
+  switch (action) {
+    case 'PUBLISHED':
+      return 'green';
+    case 'SENT_BACK_TO_REVIEW':
+      return 'blue';
+    case 'ARCHIVED':
+      return 'gray';
+    case 'UNARCHIVED':
+      return 'teal';
+    case 'DELETED':
+      return 'red';
+    default:
+      return 'gray';
+  }
+}
 
 export default function QualityPublishedPage() {
-  const { company, currentRole } =
+  const { company, currentRole, appUser, userEmail } =
     useOutletContext<CompanyOutletContext>();
 
   const [loading, setLoading] = useState(true);
@@ -86,6 +141,15 @@ export default function QualityPublishedPage() {
 
   const [archiving, setArchiving] = useState(false);
   const [sendingBack, setSendingBack] = useState(false);
+
+  // histórico de ações
+  const [actions, setActions] = useState<DocumentActionLog[]>([]);
+  const [loadingActions, setLoadingActions] = useState(false);
+
+  // modal de comentário obrigatório
+  const [pendingActionMode, setPendingActionMode] =
+    useState<PendingActionMode>(null);
+  const [actionComment, setActionComment] = useState('');
 
   // só Gestor de Qualidade
   if (currentRole !== 'GESTOR_QUALIDADE') {
@@ -219,6 +283,29 @@ export default function QualityPublishedPage() {
     setLoading(false);
   }
 
+  async function loadActions(documentId: string) {
+    setLoadingActions(true);
+    try {
+      const { data, error } = await supabase
+        .from('document_actions')
+        .select(
+          'id, action, comment, performed_by_name, performed_by_email, created_at'
+        )
+        .eq('document_id', documentId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setActions([]);
+        return;
+      }
+
+      setActions((data ?? []) as DocumentActionLog[]);
+    } finally {
+      setLoadingActions(false);
+    }
+  }
+
   useEffect(() => {
     loadDocuments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -248,19 +335,35 @@ export default function QualityPublishedPage() {
 
   const previewUrl = buildPreviewUrl(selectedDoc?.fileUrl ?? null);
 
-  async function handleArchive() {
-    if (!selectedDoc) return;
+  // sempre que mudar o documento selecionado, recarrega o histórico
+  useEffect(() => {
+    if (!selectedDoc) {
+      setActions([]);
+      return;
+    }
+    loadActions(selectedDoc.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDoc?.id]);
 
-    const confirmed = window.confirm(
-      'Retirar este documento da biblioteca? Ele deixará de aparecer para os colaboradores, mas o registro ficará arquivado.'
-    );
-    if (!confirmed) return;
+  function openActionModal(mode: PendingActionMode) {
+    if (!selectedDoc) return;
+    setPendingActionMode(mode);
+    setActionComment('');
+  }
+
+  function closeActionModal() {
+    setPendingActionMode(null);
+    setActionComment('');
+  }
+
+  async function handleArchive(comment: string) {
+    if (!selectedDoc) return;
 
     setArchiving(true);
     try {
       const nowIso = new Date().toISOString();
 
-      const { error } = await supabase
+      const { error: docErr } = await supabase
         .from('documents')
         .update({
           status: 'ARCHIVED',
@@ -268,9 +371,26 @@ export default function QualityPublishedPage() {
         })
         .eq('id', selectedDoc.id);
 
-      if (error) {
-        console.error(error);
+      if (docErr) {
+        console.error(docErr);
         throw new Error('Falha ao arquivar documento.');
+      }
+
+      // registra ação
+      const { error: logErr } = await supabase
+        .from('document_actions')
+        .insert({
+          document_id: selectedDoc.id,
+          performed_by: appUser.id,
+          performed_by_name: appUser.full_name,
+          performed_by_email: userEmail,
+          action: 'ARCHIVED',
+          comment,
+        });
+
+      if (logErr) {
+        console.error('Falha ao registrar ação de arquivamento:', logErr);
+        // não trava o fluxo – só loga
       }
 
       await loadDocuments();
@@ -282,13 +402,8 @@ export default function QualityPublishedPage() {
     }
   }
 
-  async function handleSendBackToReview() {
+  async function handleSendBackToReview(comment: string) {
     if (!selectedDoc) return;
-
-    const confirmed = window.confirm(
-      'Enviar este documento de volta para revisão? Ele sairá da biblioteca e voltará para a fila da Qualidade.'
-    );
-    if (!confirmed) return;
 
     setSendingBack(true);
     try {
@@ -308,7 +423,7 @@ export default function QualityPublishedPage() {
         throw new Error('Falha ao atualizar status do documento.');
       }
 
-      // 2) opcional: estágio da versão atual volta para UNDER_REVIEW
+      // 2) estágio da versão atual volta para UNDER_REVIEW
       if (selectedDoc.versionId) {
         const { error: vErr } = await supabase
           .from('document_versions')
@@ -321,6 +436,22 @@ export default function QualityPublishedPage() {
         }
       }
 
+      // 3) registra ação
+      const { error: logErr } = await supabase
+        .from('document_actions')
+        .insert({
+          document_id: selectedDoc.id,
+          performed_by: appUser.id,
+          performed_by_name: appUser.full_name,
+          performed_by_email: userEmail,
+          action: 'SENT_BACK_TO_REVIEW',
+          comment,
+        });
+
+      if (logErr) {
+        console.error('Falha ao registrar ação de envio para revisão:', logErr);
+      }
+
       await loadDocuments();
     } catch (err: any) {
       console.error(err);
@@ -328,6 +459,24 @@ export default function QualityPublishedPage() {
     } finally {
       setSendingBack(false);
     }
+  }
+
+  async function handleConfirmAction() {
+    if (!pendingActionMode || !selectedDoc) return;
+
+    const trimmed = actionComment.trim();
+    if (!trimmed) {
+      alert('Informe um comentário para registrar a ação.');
+      return;
+    }
+
+    if (pendingActionMode === 'ARCHIVE') {
+      await handleArchive(trimmed);
+    } else if (pendingActionMode === 'SEND_BACK') {
+      await handleSendBackToReview(trimmed);
+    }
+
+    closeActionModal();
   }
 
   if (loading) {
@@ -366,8 +515,74 @@ export default function QualityPublishedPage() {
     );
   }
 
+  const isArchiveMode = pendingActionMode === 'ARCHIVE';
+  const isSendBackMode = pendingActionMode === 'SEND_BACK';
+
   return (
     <Card withBorder shadow="sm" radius="md">
+      {/* Modal de comentário obrigatório para ações críticas */}
+      <Modal
+        opened={!!pendingActionMode}
+        onClose={closeActionModal}
+        title={
+          isArchiveMode
+            ? 'Retirar documento da biblioteca'
+            : isSendBackMode
+            ? 'Enviar documento para revisão'
+            : ''
+        }
+        centered
+        size="md"
+      >
+        <Stack gap="sm">
+          <Text size="sm">
+            {isArchiveMode &&
+              'Este documento deixará de aparecer na biblioteca para os colaboradores, mas ficará arquivado na área de Arquivados.'}
+            {isSendBackMode &&
+              'Este documento será retirado da biblioteca e voltará para a fila de revisão da Qualidade.'}
+          </Text>
+
+          <Text size="xs" fw={500}>
+            Documento:
+          </Text>
+          <Text size="sm">
+            {selectedDoc?.title}{' '}
+            {selectedDoc?.code && (
+              <Text span size="sm" c="dimmed">
+                ({selectedDoc.code})
+              </Text>
+            )}
+          </Text>
+
+          <Textarea
+            label="Comentário (obrigatório)"
+            placeholder={
+              isArchiveMode
+                ? 'Ex.: Documento substituído por nova norma, processo descontinuado, etc.'
+                : 'Ex.: Necessário ajuste em tal seção, incluir referência, corrigir diagrama, etc.'
+            }
+            minRows={3}
+            value={actionComment}
+            onChange={(e) => setActionComment(e.currentTarget.value)}
+          />
+
+          <Group justify="flex-end" mt="sm">
+            <Button variant="default" size="xs" onClick={closeActionModal}>
+              Cancelar
+            </Button>
+            <Button
+              size="xs"
+              onClick={handleConfirmAction}
+              loading={isArchiveMode ? archiving : sendingBack}
+              disabled={!actionComment.trim()}
+              color={isArchiveMode ? 'red' : 'blue'}
+            >
+              Confirmar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Stack gap="sm" h="100%">
         <Group justify="space-between" align="center">
           <Stack gap={2}>
@@ -381,7 +596,7 @@ export default function QualityPublishedPage() {
             <Button
               size="xs"
               variant="subtle"
-              leftSection={<IconReload size={14} />}
+              leftSection={<IconRefresh size={14} />}
               onClick={loadDocuments}
             >
               Atualizar
@@ -471,7 +686,7 @@ export default function QualityPublishedPage() {
                                 </Text>
                               )}
                             </Stack>
-                            <RiskBadge risk={doc.riskLevel} size="xs" />
+                            <RiskBadge risk={doc.riskLevel} />
                           </Group>
 
                           <Text size="xs" c="dimmed">
@@ -528,13 +743,13 @@ export default function QualityPublishedPage() {
                     )}
                   </Stack>
                   <Stack gap={4} align="flex-end">
-                    <RiskBadge risk={selectedDoc.riskLevel} size="xs" />
+                    <RiskBadge risk={selectedDoc.riskLevel} />
                     <Group gap="xs">
                       <Button
                         size="xs"
                         variant="outline"
                         color="red"
-                        onClick={handleArchive}
+                        onClick={() => openActionModal('ARCHIVE')}
                         loading={archiving}
                       >
                         Retirar da biblioteca
@@ -542,7 +757,7 @@ export default function QualityPublishedPage() {
                       <Button
                         size="xs"
                         variant="light"
-                        onClick={handleSendBackToReview}
+                        onClick={() => openActionModal('SEND_BACK')}
                         loading={sendingBack}
                       >
                         Enviar para revisão
@@ -562,7 +777,7 @@ export default function QualityPublishedPage() {
                         border: '1px solid #e1e4e8',
                         borderRadius: 8,
                         overflow: 'hidden',
-                        height: '55vh',
+                        height: '45vh',
                       }}
                     >
                       <iframe
@@ -580,7 +795,7 @@ export default function QualityPublishedPage() {
                       style={{
                         border: '1px solid #e1e4e8',
                         borderRadius: 8,
-                        height: '55vh',
+                        height: '45vh',
                       }}
                     >
                       <Text size="sm" c="dimmed">
@@ -593,6 +808,60 @@ export default function QualityPublishedPage() {
                     A visualização utiliza o leitor do navegador ou o Office
                     Online. Use rolagem e zoom da própria área de preview.
                   </Text>
+                </Stack>
+
+                {/* Histórico de ações */}
+                <Stack gap={4} mt="sm">
+                  <Text fw={500} size="sm">
+                    Histórico de ações da Qualidade
+                  </Text>
+
+                  {loadingActions ? (
+                    <Text size="xs" c="dimmed">
+                      Carregando histórico...
+                    </Text>
+                  ) : actions.length === 0 ? (
+                    <Text size="xs" c="dimmed">
+                      Nenhuma ação registrada ainda para este documento.
+                    </Text>
+                  ) : (
+                    <ScrollArea h={140} type="always">
+                      <Stack gap={6} pr="xs">
+                        {actions.map((a) => (
+                          <Group
+                            key={a.id}
+                            align="flex-start"
+                            gap="xs"
+                            wrap="nowrap"
+                          >
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color={actionColor(a.action)}
+                            >
+                              {actionLabel(a.action)}
+                            </Badge>
+                            <Stack gap={0} style={{ flex: 1 }}>
+                              <Text size="xs">
+                                {formatDateTime(a.created_at)} —{' '}
+                                {a.performed_by_name || 'Usuário'}{' '}
+                                {a.performed_by_email && (
+                                  <Text span size="xs" c="dimmed">
+                                    ({a.performed_by_email})
+                                  </Text>
+                                )}
+                              </Text>
+                              {a.comment && (
+                                <Text size="xs" c="dimmed">
+                                  {a.comment}
+                                </Text>
+                              )}
+                            </Stack>
+                          </Group>
+                        ))}
+                      </Stack>
+                    </ScrollArea>
+                  )}
                 </Stack>
               </Stack>
             ) : (

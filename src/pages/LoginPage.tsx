@@ -134,7 +134,7 @@ export default function LoginPage() {
               {/* Rodapé discreto */}
               <Stack gap={2} mt="lg">
                 <Text size="xs" c="dimmed">
-                  Desenvolvido para o programa de Melhoria Contínua.
+                  Desenvolvido pela Melhoria Contínua.
                 </Text>
                 <Text size="xs" c="dimmed">
                   © {new Date().getFullYear()} MC Controle.

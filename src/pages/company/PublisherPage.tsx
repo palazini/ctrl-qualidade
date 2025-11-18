@@ -19,8 +19,15 @@ import { IconUpload, IconX } from '@tabler/icons-react';
 import { supabase } from '../../lib/supabaseClient';
 
 // tipos/helpers centralizados
-import type { VersionStage } from '../../types/documents';
-import { formatDateTime, prettyTitleFromFilename } from '../../utils/documents';
+import type { DocumentStatus, VersionStage } from '../../types/documents';
+import {
+  formatDateTime,
+  prettyTitleFromFilename,
+} from '../../utils/documents';
+import {
+  VERSION_STAGE_LABELS,
+  VERSION_STAGE_COLORS,
+} from '../../types/documents';
 
 type VersionRow = {
   id: string;
@@ -36,7 +43,7 @@ type DocumentRow = {
   title: string;
   code: string | null;
   updated_at: string;
-  status: string;
+  status: DocumentStatus | null;
   versions: VersionRow[] | null;
 };
 
@@ -44,7 +51,7 @@ type MyDoc = {
   id: string;
   title: string;
   code: string | null;
-  status: string | null;
+  status: DocumentStatus | null;
   lastStage: VersionStage | null;
   lastFileName: string | null;
   lastFileUrl: string | null;
@@ -61,33 +68,18 @@ function stageBadge(stage: VersionStage | null) {
     );
   }
 
-  const labelMap: Record<VersionStage, string> = {
-    SUBMITTED: 'Enviado',
-    UNDER_REVIEW: 'Em revisão',
-    NEEDS_CHANGES: 'Precisa de ajustes',
-    EDITED_BY_QUALITY: 'Editado pela Qualidade',
-    READY_TO_PUBLISH: 'Pronto para publicar',
-    PUBLISHED: 'Publicado',
-  };
-
-  const colorMap: Record<VersionStage, string> = {
-    SUBMITTED: 'blue',
-    UNDER_REVIEW: 'indigo',
-    NEEDS_CHANGES: 'orange',
-    EDITED_BY_QUALITY: 'grape',
-    READY_TO_PUBLISH: 'teal',
-    PUBLISHED: 'green',
-  };
+  const label = VERSION_STAGE_LABELS[stage];
+  const color = VERSION_STAGE_COLORS[stage];
 
   return (
-    <Badge size="xs" color={colorMap[stage]} variant="light">
-      {labelMap[stage]}
+    <Badge size="xs" color={color} variant="light">
+      {label}
     </Badge>
   );
 }
 
 // Label textual para o status do DOCUMENTO
-function documentStatusLabel(status: string | null | undefined) {
+function documentStatusLabel(status: DocumentStatus | null | undefined) {
   switch (status) {
     case 'DRAFT':
       return 'Rascunho';

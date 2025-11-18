@@ -30,6 +30,7 @@ import type { VersionStage, RiskLevel } from '../../types/documents';
 import { formatDateTime, buildPreviewUrl } from '../../utils/documents';
 import { RiskBadge } from '../../components/documents/RiskBadge';
 
+// ---- Tipos auxiliares ----
 type VersionRow = {
   id: string;
   version_number: number;
@@ -82,6 +83,24 @@ type ReviewDoc = {
 
 type DocTypeOption = { value: string; label: string };
 
+// ações de histórico (mesmo conjunto usado em QualityPublishedPage)
+type DocumentActionType =
+  | 'PUBLISHED'
+  | 'SENT_BACK_TO_REVIEW'
+  | 'ARCHIVED'
+  | 'UNARCHIVED'
+  | 'DELETED';
+
+type DocumentActionLog = {
+  id: string;
+  action: DocumentActionType;
+  comment: string | null;
+  performed_by_name: string | null;
+  performed_by_email: string | null;
+  created_at: string;
+};
+
+// Badge de estágio da versão atual
 function stageBadge(stage: VersionStage | null) {
   if (!stage) {
     return (
@@ -116,8 +135,43 @@ function stageBadge(stage: VersionStage | null) {
   );
 }
 
+// helpers de exibição do histórico (rótulo/cor)
+function actionLabel(action: DocumentActionType): string {
+  switch (action) {
+    case 'PUBLISHED':
+      return 'Publicado';
+    case 'SENT_BACK_TO_REVIEW':
+      return 'Enviado para revisão';
+    case 'ARCHIVED':
+      return 'Arquivado';
+    case 'UNARCHIVED':
+      return 'Desarquivado';
+    case 'DELETED':
+      return 'Excluído';
+    default:
+      return action;
+  }
+}
+
+function actionColor(action: DocumentActionType): string {
+  switch (action) {
+    case 'PUBLISHED':
+      return 'green';
+    case 'SENT_BACK_TO_REVIEW':
+      return 'blue';
+    case 'ARCHIVED':
+      return 'gray';
+    case 'UNARCHIVED':
+      return 'teal';
+    case 'DELETED':
+      return 'red';
+    default:
+      return 'gray';
+  }
+}
+
 export default function QualityPage() {
-  const { company, currentRole, appUser } =
+  const { company, currentRole, appUser, userEmail } =
     useOutletContext<CompanyOutletContext>();
 
   const [loadingDocs, setLoadingDocs] = useState(true);
@@ -137,6 +191,10 @@ export default function QualityPage() {
   const [riskLevel, setRiskLevel] = useState<RiskLevel | null>(null);
 
   const [search, setSearch] = useState('');
+
+  // histórico
+  const [actions, setActions] = useState<DocumentActionLog[]>([]);
+  const [loadingActions, setLoadingActions] = useState(false);
 
   const bucketName = 'documents-source';
 
@@ -279,6 +337,29 @@ export default function QualityPage() {
     setLoadingDocs(false);
   }
 
+  async function loadActions(documentId: string) {
+    setLoadingActions(true);
+    try {
+      const { data, error } = await supabase
+        .from('document_actions')
+        .select(
+          'id, action, comment, performed_by_name, performed_by_email, created_at'
+        )
+        .eq('document_id', documentId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setActions([]);
+        return;
+      }
+
+      setActions((data ?? []) as DocumentActionLog[]);
+    } finally {
+      setLoadingActions(false);
+    }
+  }
+
   useEffect(() => {
     loadDocuments();
     loadDocTypes();
@@ -302,13 +383,14 @@ export default function QualityPage() {
   // URL de preview
   const previewUrl = buildPreviewUrl(selectedDoc?.lastFileUrl ?? null);
 
-  // sempre que mudar o documento selecionado, pré-preenche o tipo e campos de publicação
+  // sempre que mudar o documento selecionado, pré-preenche campos + carrega histórico
   useEffect(() => {
     if (!selectedDoc) {
       setSelectedTypeId(null);
       setElaborator('');
       setApprover('');
       setRiskLevel(null);
+      setActions([]);
       return;
     }
 
@@ -316,7 +398,11 @@ export default function QualityPage() {
     setElaborator(selectedDoc.elaborator ?? '');
     setApprover(selectedDoc.approver ?? '');
     setRiskLevel(selectedDoc.riskLevel ?? null);
-  }, [selectedDoc]);
+
+    // carrega histórico
+    loadActions(selectedDoc.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDoc?.id]);
 
   async function handleUploadNewVersion(files: File[]) {
     if (!selectedDoc) {
@@ -471,6 +557,22 @@ export default function QualityPage() {
       if (dErr) {
         console.error(dErr);
         throw new Error('Falha ao atualizar o status do documento.');
+      }
+
+      // registra ação de publicação no histórico
+      const { error: logErr } = await supabase
+        .from('document_actions')
+        .insert({
+          document_id: selectedDoc.id,
+          performed_by: appUser.id,
+          performed_by_name: appUser.full_name,
+          performed_by_email: userEmail,
+          action: 'PUBLISHED',
+          comment: null, // ou algum texto padrão se você quiser
+        });
+
+      if (logErr) {
+        console.error('Falha ao registrar ação de publicação:', logErr);
       }
 
       await loadDocuments();
@@ -661,7 +763,8 @@ export default function QualityPage() {
 
                   {selectedDoc.updatedAt && (
                     <Text size="xs" c="dimmed">
-                      Atualizado em: {formatDateTime(selectedDoc.updatedAt)}
+                      Atualizado em:{' '}
+                      {formatDateTime(selectedDoc.updatedAt)}
                     </Text>
                   )}
 
@@ -734,15 +837,15 @@ export default function QualityPage() {
                   <Text fw={500} size="sm">
                     Visualização online
                   </Text>
-                  {previewUrl ? (
-                    <div
-                      style={{
-                        border: '1px solid #e1e4e8',
-                        borderRadius: 8,
-                        overflow: 'hidden',
-                        height: '55vh',
-                      }}
-                    >
+                  <div
+                    style={{
+                      border: '1px solid #e1e4e8',
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      height: '40vh',
+                    }}
+                  >
+                    {previewUrl ? (
                       <iframe
                         src={previewUrl}
                         title="Visualização do arquivo"
@@ -752,12 +855,14 @@ export default function QualityPage() {
                           border: 'none',
                         }}
                       />
-                    </div>
-                  ) : (
-                    <Text size="xs" c="dimmed">
-                      Nenhum arquivo disponível para visualização.
-                    </Text>
-                  )}
+                    ) : (
+                      <Center h="100%">
+                        <Text size="xs" c="dimmed">
+                          Nenhum arquivo disponível para visualização.
+                        </Text>
+                      </Center>
+                    )}
+                  </div>
                   <Text size="xs" c="dimmed">
                     A visualização usa o leitor do navegador/Office online.
                     Use a rolagem e zoom da própria área de preview.
@@ -842,6 +947,59 @@ export default function QualityPage() {
                       </Stack>
                     </Group>
                   </Dropzone>
+                </Stack>
+
+                {/* Histórico de ações para esse documento */}
+                <Stack gap={4} mt="sm">
+                  <Text fw={500} size="sm">
+                    Histórico de ações
+                  </Text>
+                  {loadingActions ? (
+                    <Text size="xs" c="dimmed">
+                      Carregando histórico...
+                    </Text>
+                  ) : actions.length === 0 ? (
+                    <Text size="xs" c="dimmed">
+                      Nenhuma ação registrada ainda para este documento.
+                    </Text>
+                  ) : (
+                    <ScrollArea h={140} type="always">
+                      <Stack gap={6} pr="xs">
+                        {actions.map((a) => (
+                          <Group
+                            key={a.id}
+                            align="flex-start"
+                            gap="xs"
+                            wrap="nowrap"
+                          >
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color={actionColor(a.action)}
+                            >
+                              {actionLabel(a.action)}
+                            </Badge>
+                            <Stack gap={0} style={{ flex: 1 }}>
+                              <Text size="xs">
+                                {formatDateTime(a.created_at)} —{' '}
+                                {a.performed_by_name || 'Usuário'}{' '}
+                                {a.performed_by_email && (
+                                  <Text span size="xs" c="dimmed">
+                                    ({a.performed_by_email})
+                                  </Text>
+                                )}
+                              </Text>
+                              {a.comment && (
+                                <Text size="xs" c="dimmed">
+                                  {a.comment}
+                                </Text>
+                              )}
+                            </Stack>
+                          </Group>
+                        ))}
+                      </Stack>
+                    </ScrollArea>
+                  )}
                 </Stack>
               </Stack>
             ) : (
