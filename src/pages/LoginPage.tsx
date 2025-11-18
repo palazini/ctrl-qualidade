@@ -123,7 +123,7 @@ export default function LoginPage() {
                 style={{ flex: 1 }}
               >
                 <Image
-                  src="public/company-logos/mc-logo.png"
+                  src="/company-logos/mc-logo.png"
                   alt="Programa de Melhoria Contínua"
                   mah={110}
                   fit="contain"
