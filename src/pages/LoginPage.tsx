@@ -14,7 +14,9 @@ import {
   Alert,
   Image,
   Box,
+  useMantineTheme,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { supabase } from '../lib/supabaseClient';
 import { IconAlertCircle } from '@tabler/icons-react';
@@ -25,7 +27,6 @@ const EMAIL_DOMAIN = 'mc.controle.com';
 export default function LoginPage() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -33,6 +34,9 @@ export default function LoginPage() {
   const location = useLocation() as any;
 
   const from = location.state?.from?.pathname || '/';
+
+  const theme = useMantineTheme();
+  const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
 
   function buildEmail(value: string) {
     const raw = value.trim().toLowerCase();
@@ -77,6 +81,63 @@ export default function LoginPage() {
     }
   }
 
+  const year = new Date().getFullYear();
+
+  // Corpo comum do formulário (usado tanto no mobile quanto no desktop)
+  const formBody = (
+    <>
+      <Stack gap={2}>
+        <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+          Acesso
+        </Text>
+        <Title order={3}>Entrar no portal</Title>
+        <Text size="sm" c="dimmed">
+          Use seu usuário e senha.
+        </Text>
+      </Stack>
+
+      {errorMsg && (
+        <Alert
+          icon={<IconAlertCircle size={16} />}
+          title="Erro ao entrar"
+          color="red"
+        >
+          {errorMsg}
+        </Alert>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <Stack gap="sm">
+          <TextInput
+            label="Usuário ou e-mail"
+            placeholder={`joao.silva ou joao.silva@${EMAIL_DOMAIN}`}
+            required
+            value={identifier}
+            onChange={(e) => setIdentifier(e.currentTarget.value)}
+          />
+
+          <PasswordInput
+            label="Senha"
+            placeholder="Sua senha"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.currentTarget.value)}
+          />
+
+          <Group justify="space-between" mt="xs">
+            <Anchor size="xs" c="dimmed">
+              Esqueceu a senha? Procure o responsável de Melhoria Contínua.
+            </Anchor>
+          </Group>
+
+          <Button type="submit" loading={submitting} fullWidth mt="sm">
+            Entrar
+          </Button>
+        </Stack>
+      </form>
+    </>
+  );
+
   return (
     <Box
       h="100vh"
@@ -86,9 +147,10 @@ export default function LoginPage() {
         justifyContent: 'center',
         background:
           'radial-gradient(circle at top left, #f1f3f5 0, #f8f9fa 40%, #e7f5ff 100%)',
+        padding: isMobile ? '16px' : 0,
       }}
     >
-      <Container size="lg">
+      <Container size={isMobile ? 'xs' : 'lg'} px={0}>
         <Paper
           withBorder
           shadow="xl"
@@ -96,120 +158,104 @@ export default function LoginPage() {
           p={0}
           style={{
             overflow: 'hidden',
-            maxWidth: 900,
+            maxWidth: isMobile ? 420 : 900,
             margin: '0 auto',
             borderColor: '#dde1e7',
           }}
         >
-          <Group gap={0} align="stretch" grow wrap="wrap">
-            {/* Lado esquerdo: apenas logo */}
+          {isMobile ? (
+            // ==========================
+            // LAYOUT MOBILE (uma coluna)
+            // ==========================
             <Box
               style={{
-                flex: 1,
-                minWidth: 260,
-                padding: '28px 32px',
-                backgroundColor: '#ffffff',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                borderRight: '1px solid #edf0f5',
-              }}
-            >
-              {/* Área central só com a marca */}
-              <Stack
-                gap="lg"
-                justify="center"
-                align="flex-start"
-                style={{ flex: 1 }}
-              >
-                <Image
-                  src="/company-logos/mc-logo.png"
-                  alt="Programa de Melhoria Contínua"
-                  mah={110}
-                  fit="contain"
-                  fallbackSrc=""
-                />
-              </Stack>
-
-              {/* Rodapé discreto */}
-              <Stack gap={2} mt="lg">
-                <Text size="xs" c="dimmed">
-                  Desenvolvido pela Melhoria Contínua.
-                </Text>
-                <Text size="xs" c="dimmed">
-                  © {new Date().getFullYear()} MC Controle.
-                </Text>
-              </Stack>
-            </Box>
-
-            {/* Lado direito: formulário */}
-            <Box
-              style={{
-                flex: 1.1,
-                minWidth: 430,
-                padding: '32px',
+                padding: '24px 20px 16px',
                 background:
                   'linear-gradient(135deg, #f8f9fb 0%, #f1f3f5 40%, #e7f5ff 100%)',
               }}
             >
-              <Stack gap="sm" maw={360} ml="auto">
-                <Stack gap={2}>
-                  <Text size="xs" c="dimmed" fw={600} tt="uppercase">
-                    Acesso
-                  </Text>
-                  <Title order={3}>Entrar no portal</Title>
-                  <Text size="sm" c="dimmed">
-                    Use seu usuário e senha.
-                  </Text>
+              <Stack gap="lg">
+                <Stack gap="xs" align="center">
+                  <Image
+                    src="/company-logos/mc-logo.png"
+                    alt="Programa de Melhoria Contínua"
+                    mah={80}
+                    fit="contain"
+                    fallbackSrc=""
+                  />
                 </Stack>
 
-                {errorMsg && (
-                  <Alert
-                    icon={<IconAlertCircle size={16} />}
-                    title="Erro ao entrar"
-                    color="red"
-                  >
-                    {errorMsg}
-                  </Alert>
-                )}
+                <Stack gap="sm" maw={360} mx="auto">
+                  {formBody}
+                </Stack>
 
-                <form onSubmit={handleSubmit}>
-                  <Stack gap="sm">
-                    <TextInput
-                      label="Usuário ou e-mail"
-                      placeholder={`joao.silva ou joao.silva@${EMAIL_DOMAIN}`}
-                      required
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.currentTarget.value)}
-                    />
-
-                    <PasswordInput
-                      label="Senha"
-                      placeholder="Sua senha"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.currentTarget.value)}
-                    />
-
-                    <Group justify="space-between" mt="xs">
-                      <Anchor size="xs" c="dimmed">
-                        Esqueceu a senha? Procure o responsável de Melhoria Contínua.
-                      </Anchor>
-                    </Group>
-
-                    <Button
-                      type="submit"
-                      loading={submitting}
-                      fullWidth
-                      mt="sm"
-                    >
-                      Entrar
-                    </Button>
-                  </Stack>
-                </form>
+                <Stack gap={2} mt="sm" align="center">
+                  <Text size="xs" c="dimmed">
+                    Desenvolvido pela Melhoria Contínua.
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    © {year} MC Controle.
+                  </Text>
+                </Stack>
               </Stack>
             </Box>
-          </Group>
+          ) : (
+            // ==========================
+            // LAYOUT DESKTOP (dois lados)
+            // ==========================
+            <Group gap={0} align="stretch" grow wrap="nowrap">
+              {/* Lado esquerdo: logo e rodapé */}
+              <Box
+                style={{
+                  flex: 1,
+                  padding: '28px 32px',
+                  backgroundColor: '#ffffff',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  borderRight: '1px solid #edf0f5',
+                }}
+              >
+                <Stack
+                  gap="lg"
+                  justify="center"
+                  align="flex-start"
+                  style={{ flex: 1 }}
+                >
+                  <Image
+                    src="/company-logos/mc-logo.png"
+                    alt="Programa de Melhoria Contínua"
+                    mah={110}
+                    fit="contain"
+                    fallbackSrc=""
+                  />
+                </Stack>
+
+                <Stack gap={2} mt="lg">
+                  <Text size="xs" c="dimmed">
+                    Desenvolvido pela Melhoria Contínua.
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    © {year} MC Controle.
+                  </Text>
+                </Stack>
+              </Box>
+
+              {/* Lado direito: formulário */}
+              <Box
+                style={{
+                  flex: 1.1,
+                  padding: '32px',
+                  background:
+                    'linear-gradient(135deg, #f8f9fb 0%, #f1f3f5 40%, #e7f5ff 100%)',
+                }}
+              >
+                <Stack gap="sm" maw={360} ml="auto">
+                  {formBody}
+                </Stack>
+              </Box>
+            </Group>
+          )}
         </Paper>
       </Container>
     </Box>

@@ -9,6 +9,7 @@ import {
   Text,
   Group,
   Burger,
+  Box,
 } from '@mantine/core';
 import {
   useParams,
@@ -353,25 +354,34 @@ export default function CompanyLayoutPage() {
       padding="md"
     >
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <CompanyHeader
-            companyName={currentMembership.company.name}
-            appUserName={appUser.full_name}
-            userEmail={userEmail}
-            hasMultipleCompanies={hasMultipleCompanies}
-            onChangeCompany={() => navigate('/', { replace: true })}
-            onLogout={handleLogout}
-            onGoProfile={() => navigate('profile')}
-            companyLogoUrl={getCompanyLogoUrl()}
-          />
+        <Group h="100%" px="md" justify="space-between" align="center" gap="sm">
+          {/* bloco que contém burger (à esquerda no mobile) + header ocupando toda largura */}
+          <Group
+            gap="xs"
+            align="center"
+            style={{ flex: 1, minWidth: 0 }}
+          >
+            <Burger
+              opened={navbarOpened}
+              onClick={toggleNavbar}
+              hiddenFrom="sm"
+              size="sm"
+              aria-label={navbarOpened ? 'Fechar menu' : 'Abrir menu'}
+            />
 
-          <Burger
-            opened={navbarOpened}
-            onClick={toggleNavbar}
-            hiddenFrom="sm"
-            size="sm"
-            aria-label="Abrir menu"
-          />
+            <Box style={{ flex: 1, minWidth: 0 }}>
+              <CompanyHeader
+                companyName={currentMembership.company.name}
+                appUserName={appUser.full_name}
+                userEmail={userEmail}
+                hasMultipleCompanies={hasMultipleCompanies}
+                onChangeCompany={() => navigate('/', { replace: true })}
+                onLogout={handleLogout}
+                onGoProfile={() => navigate('profile')}
+                companyLogoUrl={getCompanyLogoUrl()}
+              />
+            </Box>
+          </Group>
         </Group>
       </AppShell.Header>
 
